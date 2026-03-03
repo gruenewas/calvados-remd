@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: calvados
+Version: 0.0.0
+Summary: Local editable CALVADOS snapshot + REMD scripts (thesis)
+Requires-Python: >=3.10
