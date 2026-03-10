@@ -7,12 +7,11 @@ from argparse import ArgumentParser
 from Bio import SeqIO
 
 parser = ArgumentParser()
-parser.add_argument('--name',nargs='?',required=True,type=str)
-parser.add_argument('--sim_time',nargs='?',required=True,type=float)
-parser.add_argument('--path',nargs = '?', required = True, type = str)
-parser.add_argument('--lowT', required = True, type = float)
-parser.add_argument('--highT', required = True, type = float)
-parser.add_argument('--nTemps',required = True, type = int)
+parser.add_argument('--name',nargs='?',required=True,type=str,default = "NUP98")
+parser.add_argument('--path',nargs = '?', required = True, type = str,default = "tremd-test_NUP98")
+parser.add_argument('--lowT', required = True, type = float,default = 290.15)
+parser.add_argument('--highT', required = True, type = float,default = 293.15)
+parser.add_argument('--nTemps',required = True, type = int,default = 4)
 parser.add_argument('--platform', required = False, default="CUDA")
 args = parser.parse_args()
 
