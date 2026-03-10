@@ -22,7 +22,7 @@ n_threads = (2 if len(temprange) <= 4 else 1)
 
 cwd = os.getcwd()
 N_save = int(5e4)
-N_tot = int(args.sim_time/1e-8) #uses sim_time in mus 
+N_tot = int(100000) #uses sim_time in mus 
 N_frames = int(N_tot/N_save)
 N_exchange = 10000
 N_batches = N_tot//N_exchange
@@ -58,7 +58,7 @@ for t in temprange:
     frestart = 'restart.chk',
     verbose = True,
     slab_eq = True,
-    steps_eq = int(5e6), #100*N_save
+    steps_eq = int(5e3), 
     logfreq = N_exchange
     )
 

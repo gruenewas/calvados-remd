@@ -1,4 +1,4 @@
-batches: 1000
+batches: 10
 bilayer_eq: false
 box:
 - 30
@@ -42,11 +42,11 @@ slab_eq: true
 slab_outer: 40
 slab_width: 40
 steps: 10000
-steps_eq: 5000000
+steps_eq: 5000
 sysname: NUP98_WT_292.15K
 temp: 292.15
 threads: 2
 topol: slab
-total_steps: 10000000
+total_steps: 100000
 verbose: true
 wfreq: 10000
