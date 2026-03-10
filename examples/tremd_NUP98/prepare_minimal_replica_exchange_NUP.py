@@ -12,7 +12,7 @@ parser.add_argument('--path',nargs = '?', required = False, type = str,default =
 parser.add_argument('--lowT', required = False, type = float,default = 290.15)
 parser.add_argument('--highT', required = False, type = float,default = 293.15)
 parser.add_argument('--nTemps',required = False, type = int,default = 4)
-parser.add_argument('--platform', required = False, default="CUDA")
+parser.add_argument('--platform', required = False, default="CPU")
 args = parser.parse_args()
 
 
@@ -82,7 +82,7 @@ for t in temprange:
     fdomains = f'{cwd}/input/domains.yaml',
     )
 
-  components.add(name= "NUP98_WT", nmol=5, fresidues = f'{cwd}/input/residues_CALVADOS2.csv', restraint=False)
+  components.add(name= "NUP98_WT", nmol=1, fresidues = f'{cwd}/input/residues_CALVADOS2.csv', restraint=False)
   #components.add(name="hPol2_fl",nmol=10, fresidues = f'{cwd}/input/residues_CALVADOS3.csv', restraint=True, pdb_folder = f'{cwd}/input')
     #src = Path(cwd) / "input" / "custom_restraints.txt"
     #dst = Path(path) / src.name 

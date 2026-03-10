@@ -55,18 +55,25 @@ def get_total_steps(sysname = "hpl-dimer",path="."):
     else:
         raise Exception("An error occured: Total steps varies between replicas")
 
-def discover_tfolders(sysname,path):
+def discover_tfolders(sysname, path):
+    base = Path(path).resolve()
     tfolders = []
-    for d in sorted(glob.glob(f"{path}/{sysname}_*")):
-        foldername = d.replace(f"{path}/","")
-        with open(os.path.join(d,"config.yaml")) as f:
+
+    for d in sorted(base.glob(f"{sysname}_*")):
+        with open(d / "config.yaml") as f:
             cfg = yaml.safe_load(f)
-        T = cfg["temp"]
-        gamma = cfg["friction_coeff"]
-        xml = Path(os.path.join(d,f"{foldername}.xml"))
-        top_pdb = Path(os.path.join(d,"top.pdb"))
-        chk = Path(os.path.join(d,"restart.chk"))
-        tfolders.append(REMD.TFolder(d, T, xml, top_pdb, chk, gamma))
+
+        tfolders.append(
+            REMD.TFolder(
+                path=d,
+                T=cfg["temp"],
+                system_xml=d / f"{d.name}.xml",
+                top_pdb=d / "top.pdb",
+                chk=d / "restart.chk",
+                gamma=cfg["friction_coeff"],
+            )
+        )
+
     return tfolders
 
 
