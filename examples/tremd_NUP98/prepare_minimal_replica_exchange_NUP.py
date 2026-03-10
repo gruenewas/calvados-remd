@@ -82,7 +82,7 @@ for t in temprange:
     fdomains = f'{cwd}/input/domains.yaml',
     )
 
-  components.add(name= "NUP98_WT", nmol=100, fresidues = f'{cwd}/input/residues_CALVADOS2.csv', restraint=False)
+  components.add(name= "NUP98_WT", nmol=5, fresidues = f'{cwd}/input/residues_CALVADOS2.csv', restraint=False)
   #components.add(name="hPol2_fl",nmol=10, fresidues = f'{cwd}/input/residues_CALVADOS3.csv', restraint=True, pdb_folder = f'{cwd}/input')
     #src = Path(cwd) / "input" / "custom_restraints.txt"
     #dst = Path(path) / src.name 
