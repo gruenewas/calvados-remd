@@ -37,7 +37,7 @@ This should point to the official site-packages installation.
 
 Clone this repository:
 
-    git clone <YOUR_REPO_URL>
+    git clone https://github.com/gruenewas/calvados-remd.git
     cd calvados-remd
 
 Inside the activated CALVADOS environment, replace the installed version with the patched one:
