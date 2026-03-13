@@ -155,9 +155,15 @@ class Sim:
         self.count_components()
 
         # init interactions
-        self.ah, self.yu = interactions.init_nonbonded_interactions(
-            self.eps_lj,self.cutoff_lj,self.eps_yu,self.k_yu,self.cutoff_yu,self.fixed_lambda
-            )
+        if self.softcore:
+            print(f"Using soft-core potentials with kappa = {self.kappa} and r_sc = {self.rsc} nm")
+            self.ah, self.yu = interactions.init_nonbonded_interactions_sc(
+                self.eps_lj,self.cutoff_lj,self.eps_yu,self.k_yu,self.cutoff_yu,self.fixed_lambda,self.kappa,self.rsc
+                )
+        else:
+            self.ah, self.yu = interactions.init_nonbonded_interactions(
+                self.eps_lj,self.cutoff_lj,self.eps_yu,self.k_yu,self.cutoff_yu,self.fixed_lambda
+                )
         if self.nlipids > 0:
             self.cos, self.cn = interactions.init_lipid_interactions(
             self.eps_lj,self.eps_yu,self.cutoff_yu,factor=1.9
@@ -345,6 +351,11 @@ class Sim:
                 output.write(openmm.XmlSerializer.serialize(self.system))
 
         print(f'{self.nparticles} particles in the system')
+        print('---------- Potentials ----------')
+        print("Stored AH expression:")
+        print(self.ah.getEnergyFunction())
+        print("Stored DH expression:")
+        print(self.yu.getEnergyFunction())
         print('---------- FORCES ----------')
         print(f'ah: {self.ah.getNumParticles()} particles, {self.ah.getNumExclusions()} exclusions')
         print(f'yu: {self.yu.getNumParticles()} particles, {self.yu.getNumExclusions()} exclusions')

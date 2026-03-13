@@ -59,11 +59,116 @@ def init_yu_interactions(eps, k, rc):
 
     return yu
 
+
+def init_ah_interactions_sc(eps,rc,fixed_lambda,kappa):
+    """ Define soft-core Ashbaugh-Hatch interactions. """
+
+    # intermolecular interactions
+    
+    # energy_expression = (
+    #     f"select(step(r-rmin),"
+    #     f"       l*(usc-uscc),"
+    #     f"       usc - l*uscc + {eps}*(1-l)*x + B*(r-rmin))"
+    #     f"; sig=0.5*(s1+s2)"
+    #     f"; l=select(id1+id2,(id1*id2)*0.5*(l1+l2),{fixed_lambda})"
+    #     f"; rmin=2^(1/6)*sig"
+    #     f"; A={kappa}*sig^6"
+    #     f"; den=A+r^6"
+    #     f"; denc=A+({rc})^6"
+    #     f"; usc=4*{eps}*((sig^12)/(den*den) - (sig^6)/den)"
+    #     f"; uscc=4*{eps}*((sig^12)/(denc*denc) - (sig^6)/denc)"
+    #     f"; x=(4+4*{kappa})/((2+{kappa})^2)"
+    #     f"; B=(24*{eps}*2^(5/6)/sig)*({kappa}/(({kappa}+2)^3))*(l-1)"
+    # )
+
+    # energy_expression = (
+    # f"4*{eps}*(((0.5*(s1+s2))^12)/(({kappa}*(0.5*(s1+s2))^6 + r^6)"
+    # f"*({kappa}*(0.5*(s1+s2))^6 + r^6)) - ((0.5*(s1+s2))^6)/({kappa}*(0.5*(s1+s2))^6 + r^6))"
+    # )
+    energy_expression = (
+    f"select(step(r-2^(1/6)*(0.5*(s1+s2))),"
+    f"("
+    f"select(id1+id2,(id1*id2)*0.5*(l1+l2),{fixed_lambda})"
+    f")*("
+    f"4*{eps}*("
+    f"((0.5*(s1+s2))^12)/(({kappa}*(0.5*(s1+s2))^6+r^6)*({kappa}*(0.5*(s1+s2))^6+r^6))"
+    f"-((0.5*(s1+s2))^6)/({kappa}*(0.5*(s1+s2))^6+r^6)"
+    f")"
+    f"-"
+    f"4*{eps}*("
+    f"((0.5*(s1+s2))^12)/(({kappa}*(0.5*(s1+s2))^6+({rc})^6)*({kappa}*(0.5*(s1+s2))^6+({rc})^6))"
+    f"-((0.5*(s1+s2))^6)/({kappa}*(0.5*(s1+s2))^6+({rc})^6)"
+    f")"
+    f"),"
+    f"4*{eps}*("
+    f"((0.5*(s1+s2))^12)/(({kappa}*(0.5*(s1+s2))^6+r^6)*({kappa}*(0.5*(s1+s2))^6+r^6))"
+    f"-((0.5*(s1+s2))^6)/({kappa}*(0.5*(s1+s2))^6+r^6)"
+    f")"
+    f"-"
+    f"("
+    f"select(id1+id2,(id1*id2)*0.5*(l1+l2),{fixed_lambda})"
+    f")*"
+    f"4*{eps}*("
+    f"((0.5*(s1+s2))^12)/(({kappa}*(0.5*(s1+s2))^6+({rc})^6)*({kappa}*(0.5*(s1+s2))^6+({rc})^6))"
+    f"-((0.5*(s1+s2))^6)/({kappa}*(0.5*(s1+s2))^6+({rc})^6)"
+    f")"
+    f"+{eps}*(1-select(id1+id2,(id1*id2)*0.5*(l1+l2),{fixed_lambda}))*((4+4*{kappa})/((2+{kappa})^2))"
+    f"+"
+    f"("
+    f"(24*{eps}*2^(5/6)/(0.5*(s1+s2)))*({kappa}/(({kappa}+2)^3))"
+    f"*(select(id1+id2,(id1*id2)*0.5*(l1+l2),{fixed_lambda})-1)"
+    f")*(r-2^(1/6)*(0.5*(s1+s2)))"
+    f")"
+    )  
+    #ah = openmm.CustomNonbondedForce(energy_expression+f'; s=0.5*(s1+s2); l=0.5*(l1+l2); shift=(0.5*(s1+s2)/{rc})^12-(0.5*(s1+s2)/{rc})^6')
+    ah = openmm.CustomNonbondedForce(energy_expression) #+f'; l=select(id1+id2,(id1*id2)*0.5*(l1+l2),{fixed_lambda}); shift=(s/{rc})^12-(s/{rc})^6; s=0.5*(s1+s2)')
+
+    ah.addPerParticleParameter('s')
+    ah.addPerParticleParameter('l')
+    ah.addPerParticleParameter('id')
+
+    ah.setNonbondedMethod(openmm.CustomNonbondedForce.CutoffPeriodic)
+    ah.setCutoffDistance(rc*unit.nanometer)
+    ah.setForceGroup(0)
+
+    #print('Ashbaugh-Hatch potential between particles with lambda=1 and sigma=0.68 at',rc*unit.nanometer,end=': ')
+    #print(4*eps*((0.68/rc)**12-(0.68/rc)**6)*unit.kilojoules_per_mole)
+    return ah
+
+
+def init_yu_interactions_sc(eps, k, rc, kappa, rsc):
+    """ Define soft-core Yukawa interactions. """
+
+    energy_expression = (
+        f"q*{eps}*(exp(-{k}*rho)/rho - exp(-{k}*rhoc)/rhoc)"
+        "; q=q1*q2"
+        f"; rho=sqrt({kappa}*({rsc}^2) + r^2)"
+        f"; rhoc=sqrt({kappa}*({rsc}^2) + ({rc}^2))"
+    )
+
+    yu = openmm.CustomNonbondedForce(energy_expression)
+    yu.addPerParticleParameter('q')
+
+    yu.setNonbondedMethod(openmm.CustomNonbondedForce.CutoffPeriodic)
+    yu.setCutoffDistance(rc*unit.nanometer)
+    yu.setForceGroup(1)
+
+    return yu
+
+
 def init_nonbonded_interactions(eps_lj,cutoff_lj,eps_yu,k_yu,cutoff_yu,fixed_lambda):
     """ Define protein interaction expressions (without restraints). """
 
     ah = init_ah_interactions(eps_lj, cutoff_lj, fixed_lambda)
     yu = init_yu_interactions(eps_yu, k_yu, cutoff_yu)
+
+    return ah, yu
+
+def init_nonbonded_interactions_sc(eps_lj,cutoff_lj,eps_yu,k_yu,cutoff_yu,fixed_lambda,kappa,rsc):
+    """ Define protein interaction expressions (without restraints). """
+
+    ah = init_ah_interactions_sc(eps_lj, cutoff_lj, fixed_lambda,kappa)
+    yu = init_yu_interactions_sc(eps_yu, k_yu, cutoff_yu,kappa,rsc)
 
     return ah, yu
 
