@@ -7,3 +7,7 @@ name = "calvados"
 version = "0.0.0"
 description = "Local editable CALVADOS snapshot + REMD scripts (thesis)"
 requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["calvados*", "md_analysis_lib*"]
