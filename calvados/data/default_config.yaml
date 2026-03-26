@@ -7,6 +7,9 @@ eps_lj : 0.2
 cutoff_lj : 2.0
 cutoff_yu : 4.0
 
+softcore : False
+kappa : 0
+rsc : 0
 steps : 100000000
 wfreq : 100000
 platform : 'CPU'
