@@ -364,34 +364,8 @@ def fit_stretched_exponential_decay(
     acf,
     p0=(1.0, 0.5),
     bounds=([0, 0], [np.inf, 1]),
+    fit_mask=None,
 ):
-    """
-    Fit a stretched exponential decay
-
-        exp(-(t/tau)^beta)
-
-    to ACF data.
-
-    Parameters
-    ----------
-    t : array-like
-        Time axis.
-    acf : array-like
-        ACF values corresponding to t.
-    p0 : tuple or list, default (1.0, 0.5)
-        Initial guess for (tau, beta).
-    bounds : 2-tuple, default ([0, 0], [np.inf, 1])
-        Bounds for (tau, beta).
-
-    Returns
-    -------
-    popt : ndarray
-        Fitted parameters [tau, beta].
-    pcov : ndarray
-        Covariance matrix.
-    acf_fit : ndarray
-        Fitted curve evaluated on the input t grid.
-    """
     t = np.asarray(t, dtype=float)
     acf = np.asarray(acf, dtype=float)
 
@@ -402,6 +376,13 @@ def fit_stretched_exponential_decay(
         raise ValueError("t and acf must have the same length")
 
     mask = np.isfinite(t) & np.isfinite(acf)
+
+    if fit_mask is not None:
+        fit_mask = np.asarray(fit_mask, dtype=bool)
+        if fit_mask.shape != t.shape:
+            raise ValueError("fit_mask must have the same shape as t")
+        mask &= fit_mask
+
     t_fit = t[mask]
     acf_fit_data = acf[mask]
 
