@@ -156,14 +156,31 @@ class Sim:
 
         # init interactions
         if self.softcore:
-            print(f"Using soft-core potentials with kappa = {self.kappa} and r_sc = {self.rsc} nm")
-            self.ah, self.yu = interactions.init_nonbonded_interactions_sc(
-                self.eps_lj,self.cutoff_lj,self.eps_yu,self.k_yu,self.cutoff_yu,self.fixed_lambda,self.kappa,self.rsc
+            if self.sc_mode == "kappa":
+                print(f"Using soft-core potentials in kappa mode with kappa = {self.kappa} and r_sc = {self.rsc} nm")
+                self.ah, self.yu = interactions.init_nonbonded_interactions_sc(
+                    self.eps_lj, self.cutoff_lj, self.eps_yu, self.k_yu,
+                    self.cutoff_yu, self.fixed_lambda, self.kappa, self.rsc
                 )
+            elif self.sc_mode == "rt":
+                if self.rt <= 0:
+                    self.ah, self.yu = interactions.init_nonbonded_interactions(
+                        self.eps_lj, self.cutoff_lj, self.eps_yu, self.k_yu,
+                        self.cutoff_yu, self.fixed_lambda
+                    )
+                else:             
+                    print(f"Using soft-core potentials in rt mode with rt = {self.rt}")
+                    self.ah, self.yu = interactions.init_nonbonded_interactions_rt(
+                        self.eps_lj, self.cutoff_lj, self.eps_yu, self.k_yu,
+                        self.cutoff_yu, self.fixed_lambda, self.rt
+                    )
+            else:
+                raise ValueError(f"Unknown sc_mode: {self.sc_mode}")
         else:
             self.ah, self.yu = interactions.init_nonbonded_interactions(
-                self.eps_lj,self.cutoff_lj,self.eps_yu,self.k_yu,self.cutoff_yu,self.fixed_lambda
-                )
+                self.eps_lj, self.cutoff_lj, self.eps_yu, self.k_yu,
+                self.cutoff_yu, self.fixed_lambda
+            )
         if self.nlipids > 0:
             self.cos, self.cn = interactions.init_lipid_interactions(
             self.eps_lj,self.eps_yu,self.cutoff_yu,factor=1.9
@@ -474,8 +491,12 @@ class Sim:
                 else:
                     self.cos.addParticle([sig*unit.nanometer, lam, 1])
         # Add Debye-Huckel
-        for q in comp.qs:
-            self.yu.addParticle([q])
+        if self.softcore and self.sc_mode == "rt":
+            for q,sig in zip(comp.qs,comp.sigmas):
+                self.yu.addParticle([q,sig*unit.nanometer])
+        else:   
+            for q in comp.qs:
+                self.yu.addParticle([q])
 
         # Add Charge-Nonpolar Interaction
         if self.nlipids > 0 or self.ncookelipids > 0:

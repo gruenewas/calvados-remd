@@ -164,12 +164,194 @@ def init_nonbonded_interactions(eps_lj,cutoff_lj,eps_yu,k_yu,cutoff_yu,fixed_lam
 
     return ah, yu
 
+def init_ah_interactions_sc(eps, rc, fixed_lambda, kappa):
+    """Define soft-core Ashbaugh-Hatch interactions."""
+
+    lam_expr = f"select(id1+id2,(id1*id2)*0.5*(l1+l2),{fixed_lambda})"
+    sig_expr = "(0.5*(s1+s2))"
+    rmin_expr = f"2^(1/6)*{sig_expr}"
+
+    usc_r_expr = (
+        f"4*{eps}*("
+        f"({sig_expr}^12)/(({kappa}*{sig_expr}^6+r^6)*({kappa}*{sig_expr}^6+r^6))"
+        f"-({sig_expr}^6)/({kappa}*{sig_expr}^6+r^6)"
+        f")"
+    )
+
+    usc_rc_expr = (
+        f"4*{eps}*("
+        f"({sig_expr}^12)/(({kappa}*{sig_expr}^6+({rc})^6)*({kappa}*{sig_expr}^6+({rc})^6))"
+        f"-({sig_expr}^6)/({kappa}*{sig_expr}^6+({rc})^6)"
+        f")"
+    )
+
+    x_expr = f"((4+4*{kappa})/((2+{kappa})^2))"
+
+    B_expr = (
+        f"((24*{eps}*2^(5/6)/{sig_expr})*({kappa}/(({kappa}+2)^3))*(({lam_expr})-1))"
+    )
+
+    outer_expr = f"({lam_expr})*(({usc_r_expr})-({usc_rc_expr}))"
+
+    inner_expr = (
+        f"({usc_r_expr})"
+        f"-({lam_expr})*({usc_rc_expr})"
+        f"+{eps}*(1-({lam_expr}))*{x_expr}"
+        f"+({B_expr})*(r-{rmin_expr})"
+    )
+
+    energy_expression = f"select(step(r-{rmin_expr}), {outer_expr}, {inner_expr})"
+
+    ah = openmm.CustomNonbondedForce(energy_expression)
+    ah.addPerParticleParameter('s')
+    ah.addPerParticleParameter('l')
+    ah.addPerParticleParameter('id')
+
+    ah.setNonbondedMethod(openmm.CustomNonbondedForce.CutoffPeriodic)
+    ah.setCutoffDistance(rc*unit.nanometer)
+    ah.setForceGroup(0)
+
+    return ah
+
+
+def init_yu_interactions_sc(eps, k, rc, kappa, rsc):
+    """Define soft-core Yukawa interactions."""
+
+    rho_expr = f"sqrt({kappa}*({rsc}^2)+r^2)"
+    rhoc_expr = f"sqrt({kappa}*({rsc}^2)+({rc})^2)"
+
+    energy_expression = (
+        f"q1*q2*{eps}*("
+        f"exp(-{k}*{rho_expr})/{rho_expr}"
+        f"-exp(-{k}*{rhoc_expr})/{rhoc_expr}"
+        f")"
+    )
+    
+    yu = openmm.CustomNonbondedForce(energy_expression)
+    yu.addPerParticleParameter('q')
+
+    yu.setNonbondedMethod(openmm.CustomNonbondedForce.CutoffPeriodic)
+    yu.setCutoffDistance(rc*unit.nanometer)
+    yu.setForceGroup(1)
+
+    return yu
+
 def init_nonbonded_interactions_sc(eps_lj,cutoff_lj,eps_yu,k_yu,cutoff_yu,fixed_lambda,kappa,rsc):
     """ Define protein interaction expressions (without restraints). """
 
     ah = init_ah_interactions_sc(eps_lj, cutoff_lj, fixed_lambda,kappa)
     yu = init_yu_interactions_sc(eps_yu, k_yu, cutoff_yu,kappa,rsc)
 
+    return ah, yu
+
+def init_ah_interactions_rt(eps, rc, fixed_lambda, rt):
+    """Define Bunker-Duenweg-style soft-core Ashbaugh-Hatch interactions."""
+
+    lam_expr = f"select(id1+id2,(id1*id2)*0.5*(l1+l2),{fixed_lambda})"
+    sig_expr = "(0.5*(s1+s2))"
+    rmin_expr = f"2^(1/6)*{sig_expr}"
+
+    # pairwise effective rt = min(rt, rmin)
+    rt_eff_expr = f"select(step(({rt})-({rmin_expr})), ({rmin_expr}), ({rt}))"
+
+    # epsilon scaling used in your ah_full_sc()
+    eps_eff_expr = f"({eps}*(1-(({rt_eff_expr})/({rmin_expr}))^2))"
+
+    # standard LJ with eps_eff
+    lj_r_expr = (
+        f"4*{eps_eff_expr}*("
+        f"({sig_expr}/r)^12 - ({sig_expr}/r)^6"
+        f")"
+    )
+
+    lj_rc_expr = (
+        f"4*{eps_eff_expr}*("
+        f"({sig_expr}/({rc}))^12 - ({sig_expr}/({rc}))^6"
+        f")"
+    )
+
+    # parabola coefficients A and B, matched at rt_eff
+    A_expr = (
+        f"(28*{eps_eff_expr}*({sig_expr}^12)/(({rt_eff_expr})^12)"
+        f" -16*{eps_eff_expr}*({sig_expr}^6)/(({rt_eff_expr})^6))"
+    )
+
+    B_expr = (
+        f"(24*{eps_eff_expr}*({sig_expr}^12)/(({rt_eff_expr})^14)"
+        f" -12*{eps_eff_expr}*({sig_expr}^6)/(({rt_eff_expr})^8))"
+    )
+
+    # short-range softened LJ:
+    # for r <= rt_eff: parabola
+    # for r > rt_eff : ordinary LJ
+    sc_lj_expr = (
+        f"select(step(r-({rt_eff_expr})),"
+        f"       ({lj_r_expr}),"
+        f"       (({A_expr})-({B_expr})*r^2))"
+    )
+
+    # full AH:
+    # outer branch unchanged except eps -> eps_eff
+    # inner branch uses sc_lj_expr
+    inner_expr = (
+        f"({sc_lj_expr})"
+        f"-({lam_expr})*({lj_rc_expr})"
+        f"+({eps_eff_expr})*(1-({lam_expr}))"
+    )
+
+    outer_expr = f"({lam_expr})*(({lj_r_expr})-({lj_rc_expr}))"
+
+    energy_expression = f"select(step(r-({rmin_expr})), ({outer_expr}), ({inner_expr}))"
+
+    print("AH-RT ENERGY EXPRESSION:")
+    print(energy_expression)
+
+    ah = openmm.CustomNonbondedForce(energy_expression)
+    ah.addPerParticleParameter("s")
+    ah.addPerParticleParameter("l")
+    ah.addPerParticleParameter("id")
+
+    ah.setNonbondedMethod(openmm.CustomNonbondedForce.CutoffPeriodic)
+    ah.setCutoffDistance(rc * unit.nanometer)
+    ah.setForceGroup(0)
+
+    return ah
+
+def init_yu_interactions_rt(eps, k, rc, rt):
+    """Define Bunker-Duenweg-style soft-core Yukawa interactions."""
+
+    sig_expr = "(0.5*(s1+s2))"
+    rmin_expr = f"2^(1/6)*{sig_expr}"
+    rt_eff_expr = f"select(step(({rt})-({rmin_expr})), ({rmin_expr}), ({rt}))"
+
+    eps_eff_expr = f"({eps}*(1-(({rt_eff_expr})/({rmin_expr}))))"
+
+    rho_expr = f"sqrt(({rt_eff_expr})^2 + r^2)"
+    rhoc_expr = f"sqrt(({rt_eff_expr})^2 + ({rc})^2)"
+
+    energy_expression = (
+        f"q1*q2*({eps_eff_expr})*("
+        f"exp(-{k}*({rho_expr}))/({rho_expr})"
+        f"-exp(-{k}*({rhoc_expr}))/({rhoc_expr})"
+        f")"
+    )
+
+    print("YU-RT ENERGY EXPRESSION:")
+    print(energy_expression)
+
+    yu = openmm.CustomNonbondedForce(energy_expression)
+    yu.addPerParticleParameter("q")
+    yu.addPerParticleParameter("s")   # needed because rmin depends on sigma
+
+    yu.setNonbondedMethod(openmm.CustomNonbondedForce.CutoffPeriodic)
+    yu.setCutoffDistance(rc * unit.nanometer)
+    yu.setForceGroup(1)
+
+    return yu
+
+def init_nonbonded_interactions_rt(eps_lj, cutoff_lj, eps_yu, k_yu, cutoff_yu, fixed_lambda, rt):
+    ah = init_ah_interactions_rt(eps_lj, cutoff_lj, fixed_lambda, rt)
+    yu = init_yu_interactions_rt(eps_yu, k_yu, cutoff_yu, rt)
     return ah, yu
 
 def init_angles():
