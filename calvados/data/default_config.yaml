@@ -10,6 +10,8 @@ cutoff_yu : 4.0
 softcore : False
 kappa : 0
 rsc : 0
+sc_mode : "rt"
+rt : 0.5
 steps : 100000000
 wfreq : 100000
 platform : 'CPU'
