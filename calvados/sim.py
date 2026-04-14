@@ -158,19 +158,25 @@ class Sim:
         if self.softcore:
             if self.sc_mode == "kappa":
                 print(f"Using soft-core potentials in kappa mode with kappa = {self.kappa} and r_sc = {self.rsc} nm")
-                self.ah, self.yu = interactions.init_nonbonded_interactions_sc(
+                self.ah, self.yu = interactions.init_nonbonded_interactions_sc_kap(
                     self.eps_lj, self.cutoff_lj, self.eps_yu, self.k_yu,
                     self.cutoff_yu, self.fixed_lambda, self.kappa, self.rsc
                 )
-            elif self.sc_mode == "rt":
+            elif "rt" in self.sc_mode:
                 if self.rt <= 0:
                     self.ah, self.yu = interactions.init_nonbonded_interactions(
                         self.eps_lj, self.cutoff_lj, self.eps_yu, self.k_yu,
                         self.cutoff_yu, self.fixed_lambda
                     )
-                else:             
-                    print(f"Using soft-core potentials in rt mode with rt = {self.rt}")
-                    self.ah, self.yu = interactions.init_nonbonded_interactions_rt(
+                elif self.sc_mode == "rt1":            
+                    print(f"Using soft-core potentials in rt1 mode with rt = {self.rt} nm")
+                    self.ah, self.yu = interactions.init_nonbonded_interactions_rt1(
+                        self.eps_lj, self.cutoff_lj, self.eps_yu, self.k_yu,
+                        self.cutoff_yu, self.fixed_lambda, self.rt
+                    )
+                elif self.sc_mode == "rt2":            
+                    print(f"Using soft-core potentials in rt2 mode with rt = {self.rt} * sig")
+                    self.ah, self.yu = interactions.init_nonbonded_interactions_rt2(
                         self.eps_lj, self.cutoff_lj, self.eps_yu, self.k_yu,
                         self.cutoff_yu, self.fixed_lambda, self.rt
                     )
@@ -491,7 +497,7 @@ class Sim:
                 else:
                     self.cos.addParticle([sig*unit.nanometer, lam, 1])
         # Add Debye-Huckel
-        if self.softcore and self.sc_mode == "rt":
+        if self.softcore and "rt" in self.sc_mode:
             for q,sig in zip(comp.qs,comp.sigmas):
                 self.yu.addParticle([q,sig*unit.nanometer])
         else:   
