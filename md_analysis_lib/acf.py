@@ -358,6 +358,34 @@ def calc_e2e_distance_autocorr(
 def stretched_exponential_decay(t, tau, beta):
     return np.exp(-(t / tau) ** beta)
 
+from scipy.special import gamma,psi
+
+def mean_relax_time(tau,beta):
+
+    return tau*(gamma(2/beta)/gamma(1/beta))
+
+def mean_relax_time_err(tau,beta,var_tau,var_beta,cov_taubeta):
+
+    g = gamma(2/beta) / gamma(1/beta)
+
+    dydtau = g
+
+    dydbeta = (tau/beta**2) * g * (psi(1/beta) - 2*psi(2/beta))
+
+    var_y = dydtau**2 * var_tau + dydbeta**2 * var_beta + 2*dydtau*dydbeta*cov_taubeta
+
+    return np.sqrt(var_y)
+
+def mean_relax_time_mc(popt, pcov, n=100000):
+    samples = np.random.multivariate_normal(popt, pcov, size=n)
+    tau_s = samples[:, 0]
+    beta_s = samples[:, 1]
+
+    # keep only physically sensible samples
+    mask = (tau_s > 0) & (beta_s > 0)
+    vals = mean_relax_time(tau_s[mask], beta_s[mask])
+
+    return np.mean(vals), np.std(vals, ddof=1)
 
 def fit_stretched_exponential_decay(
     t,
@@ -399,7 +427,12 @@ def fit_stretched_exponential_decay(
 
     acf_fit = stretched_exponential_decay(t, *popt)
 
-    return popt, pcov, acf_fit
+    t_mean_ana = mean_relax_time(*popt)
+    t_err_ana = mean_relax_time_err(popt[0],popt[1],pcov[0,0],pcov[1,1],pcov[0,1])
+
+    t_mean_mc, t_err_mc = mean_relax_time_mc(popt,pcov)
+
+    return popt, pcov, acf_fit, t_mean_ana, t_err_ana, t_mean_mc,t_err_mc
 
 
 def plot_acf_with_fit(
