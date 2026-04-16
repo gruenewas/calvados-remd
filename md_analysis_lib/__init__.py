@@ -9,6 +9,7 @@ from .acf import (
     calc_e2e_corr_function,
     calc_e2e_distance_autocorr,
 )
+from . import remd_tools
 
 __all__ = [
     "minimum_image_vectors",
@@ -20,4 +21,5 @@ __all__ = [
     "plot_acf_with_fit",
     "calc_e2e_corr_function",
     "calc_e2e_distance_autocorr",
+    "print"
 ]
