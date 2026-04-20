@@ -20,10 +20,12 @@ def compute_e2e_vectors_from_bonds(u, step=None):
     nframes = len(u.trajectory[::step])
     nchains = len(u.segments)
     R = np.zeros((nframes, nchains, 3), dtype=np.float64)
+    t = np.zeros(nframes,dtype=np.float64)
 
     print("Calculating end-to-end vectors from MIC-corrected bond vectors")
     for tidx, ts in tqdm(enumerate(u.trajectory[::step]), total=nframes):
         box = ts.dimensions
+        t[tidx] = ts.time*1e-6
 
         for cidx, chain in enumerate(u.segments):
             pos = chain.atoms.positions
@@ -31,7 +33,7 @@ def compute_e2e_vectors_from_bonds(u, step=None):
             bond_vecs = minimum_image_vectors(bond_vecs, box)
             R[tidx, cidx] = np.sum(bond_vecs, axis=0)
 
-    return R
+    return R,t
 
 
 def _normalize_corr(corr, nframes, unbiased=True):
@@ -146,6 +148,7 @@ def calc_e2e_corr_function(
     filename=None,
     plot=False,
     R=None,
+    t = None,
     save_Ree=True,
     save_txt=True,
     subtract_mean=False,
@@ -170,25 +173,30 @@ def calc_e2e_corr_function(
     if comp_dict is None:
         raise ValueError("comp_dict must be provided")
 
-    if R is None:
+    if R is None or t is None:
         if folder is None:
             raise ValueError("Either R or folder must be provided")
         u = mda.Universe(f"{folder}/{top_file}", f"{folder}/{traj_file}")
         if max_frames is not None:
-            R = compute_e2e_vectors_from_bonds(u, step=1)[:max_frames]
+            R,time = compute_e2e_vectors_from_bonds(u, step=1)[:max_frames]
         else:
-            R = compute_e2e_vectors_from_bonds(u, step=1)
+            R,time = compute_e2e_vectors_from_bonds(u, step=1)
 
         if save_Ree:
             np.save(f"{out_path}/Ree.npy", R)
+            np.save(f"{out_path}/t.npy", time)
     else:
         R = np.asarray(R, dtype=float)
+        time = np.asarray(t,dtype=float)
         if max_frames is not None:
             R = R[:max_frames]
 
     nframes, nchains, ndim = R.shape
     if ndim != 3:
         raise ValueError("R must have shape (nframes, nchains, 3)")
+
+    if nframes != time.shape[0]:
+        raise ValueError("R and t must have the same shape!")
 
     rho = np.zeros((nframes, nchains), dtype=float)
 
@@ -210,9 +218,6 @@ def calc_e2e_corr_function(
     if save_txt:
         for key, val in rho_comps.items():
             np.savetxt(f"{out_path}/rho_{key}.txt", val)
-
-    total_time = (nframes - 1) * factor * wfreq * 1e-8
-    time = np.linspace(0, total_time, nframes)
 
     if plot:
         fig, ax = plt.subplots()
