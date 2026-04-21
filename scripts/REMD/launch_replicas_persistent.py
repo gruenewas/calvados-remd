@@ -4,21 +4,16 @@ import os
 import sys
 import time
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
-import openmm
 import pandas as pd
 import yaml
-from openmm import app, unit
-
-from calvados import sim as calvados_sim
 
 sys.stdout.reconfigure(line_buffering=True)
 
 KB = 0.008314462618  # kJ/(mol*K)
-POS_UNIT = unit.nanometer
-VEL_UNIT = unit.nanometer / unit.picosecond
 CSV_FIELDS = [
     "time",
     "segment",
@@ -45,6 +40,39 @@ CSV_FIELDS = [
     "Ui_xj",
     "Uj_xi",
 ]
+
+
+@lru_cache(maxsize=1)
+def get_openmm_modules():
+    import openmm
+    from openmm import app, unit
+
+    return openmm, app, unit
+
+
+@lru_cache(maxsize=1)
+def get_calvados_sim_module():
+    from calvados import sim as calvados_sim
+
+    return calvados_sim
+
+
+def pos_unit():
+    _, _, unit = get_openmm_modules()
+    return unit.nanometer
+
+
+def vel_unit():
+    _, _, unit = get_openmm_modules()
+    return unit.nanometer / unit.picosecond
+
+
+def visible_cuda_devices():
+    raw = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if not raw:
+        return None
+    devices = [device.strip() for device in raw.split(",") if device.strip()]
+    return devices or None
 
 
 @dataclass(frozen=True)
@@ -165,6 +193,7 @@ class PersistentReplica:
         if platform_override is not None:
             self.config["platform"] = platform_override
 
+        calvados_sim = get_calvados_sim_module()
         self.mysim = calvados_sim.Sim(str(self.path), self.config, self.components)
         self._load_or_build_system()
         self.simulation, self.append = self._initialize_simulation()
@@ -195,6 +224,7 @@ class PersistentReplica:
         return self.path / f"{self.mysim.sysname}.xml"
 
     def _load_or_build_system(self):
+        openmm, _, _ = get_openmm_modules()
         if self.xml_path.is_file():
             print(f"[{self.spec.sysname}] Loading existing system XML")
             try:
@@ -209,6 +239,7 @@ class PersistentReplica:
         self.mysim.build_system()
 
     def _make_openmm_simulation(self, pdb):
+        openmm, app, unit = get_openmm_modules()
         integrator = openmm.openmm.LangevinMiddleIntegrator(
             self.mysim.temp * unit.kelvin,
             self.mysim.friction_coeff / unit.picosecond,
@@ -227,14 +258,31 @@ class PersistentReplica:
                 dict(Threads=str(self.mysim.threads)),
             )
         else:
-            #platform.setPropertyDefaultValue("DeviceIndex", str(self.assigned_gpu))
-            properties = {'DeviceIndex' : str(self.assigned_gpu)}
+            properties = {}
+            visible_devices = visible_cuda_devices()
+            effective_device_index = None
+            if self.assigned_gpu is not None:
+                if visible_devices and len(visible_devices) == 1:
+                    effective_device_index = "0"
+                elif visible_devices and str(self.assigned_gpu) in visible_devices:
+                    effective_device_index = str(visible_devices.index(str(self.assigned_gpu)))
+                else:
+                    effective_device_index = str(self.assigned_gpu)
+                properties["DeviceIndex"] = effective_device_index
             print(
                 f"[{self.spec.sysname}] Using {self.mysim.platform} "
-                f"with CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES')} and"
-                f"and properties : {properties}"
+                f"with assigned_gpu={self.assigned_gpu}, "
+                f"CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES')}, "
+                f"effective DeviceIndex={effective_device_index}, "
+                f"properties={properties}"
             )
-            simulation = app.simulation.Simulation(pdb.topology, self.mysim.system, integrator, platform,properties)
+            simulation = app.simulation.Simulation(
+                pdb.topology,
+                self.mysim.system,
+                integrator,
+                platform,
+                properties,
+            )
         return simulation
 
     def _backup_old_trajectory(self):
@@ -245,6 +293,7 @@ class PersistentReplica:
             os.rename(self.dcd_path, backup)
 
     def _initialize_simulation(self):
+        _, app, _ = get_openmm_modules()
         checkpoint_exists = self.checkpoint_path.is_file() and self.mysim.restart == "checkpoint"
         append = checkpoint_exists and self.dcd_path.is_file()
 
@@ -297,6 +346,7 @@ class PersistentReplica:
         return simulation, False
 
     def _attach_reporters(self):
+        _, app, _ = get_openmm_modules()
         self.simulation.reporters.append(
             app.dcdreporter.DCDReporter(str(self.dcd_path), self.mysim.wfreq, append=self.append)
         )
@@ -314,6 +364,7 @@ class PersistentReplica:
         )
 
     def _write_checkpoint_pdb(self, simulation=None):
+        _, app, _ = get_openmm_modules()
         if simulation is None:
             simulation = self.simulation
         state = simulation.context.getState(getPositions=True, enforcePeriodicBox=True)
@@ -329,31 +380,34 @@ class PersistentReplica:
         )
 
     def state_payload(self):
+        _, _, unit = get_openmm_modules()
         state = self.get_state()
         return {
-            "positions_nm": quantity_to_numpy(state.getPositions(), POS_UNIT),
-            "velocities_nm_ps": quantity_to_numpy(state.getVelocities(), VEL_UNIT),
-            "box_nm": quantity_to_numpy(state.getPeriodicBoxVectors(), POS_UNIT),
+            "positions_nm": quantity_to_numpy(state.getPositions(), pos_unit()),
+            "velocities_nm_ps": quantity_to_numpy(state.getVelocities(), vel_unit()),
+            "box_nm": quantity_to_numpy(state.getPeriodicBoxVectors(), pos_unit()),
             "energy_kj_mol": float(state.getPotentialEnergy().value_in_unit(unit.kilojoules_per_mole)),
         }
 
     def set_state(self, positions_nm, velocities_nm_ps, box_nm):
-        positions = numpy_to_quantity(positions_nm, POS_UNIT)
-        velocities = numpy_to_quantity(velocities_nm_ps, VEL_UNIT)
-        box = numpy_to_quantity(box_nm, POS_UNIT)
+        positions = numpy_to_quantity(positions_nm, pos_unit())
+        velocities = numpy_to_quantity(velocities_nm_ps, vel_unit())
+        box = numpy_to_quantity(box_nm, pos_unit())
         a, b, c = box
         self.simulation.context.setPositions(positions)
         self.simulation.context.setPeriodicBoxVectors(a, b, c)
         self.simulation.context.setVelocities(velocities)
 
     def compute_cross_energy(self, positions_nm):
+        _, _, unit = get_openmm_modules()
         original = self.simulation.context.getState(getPositions=True).getPositions()
-        self.simulation.context.setPositions(numpy_to_quantity(positions_nm, POS_UNIT))
+        self.simulation.context.setPositions(numpy_to_quantity(positions_nm, pos_unit()))
         energy = self.simulation.context.getState(getEnergy=True).getPotentialEnergy().value_in_unit(unit.kilojoules_per_mole)
         self.simulation.context.setPositions(original)
         return float(energy)
 
     def save_runtime_state(self, write_system_pdb=False):
+        _, app, _ = get_openmm_modules()
         self.simulation.saveCheckpoint(str(self.checkpoint_path))
         state = self.simulation.context.getState(getPositions=True, enforcePeriodicBox=True)
         checkpoint_reporter = app.pdbreporter.PDBReporter(str(self.checkpoint_pdb_path), 0)
@@ -367,6 +421,7 @@ class PersistentReplica:
         self.save_runtime_state(write_system_pdb=False)
 
     def persist_system_xml(self):
+        openmm, _, _ = get_openmm_modules()
         self.xml_path.write_text(openmm.XmlSerializer.serialize(self.mysim.system))
 
 
@@ -424,15 +479,14 @@ def replica_worker_main(conn, spec: ReplicaSpec, platform_override=None,assigned
         sys.stderr.reconfigure(line_buffering=True)
     except AttributeError:
         pass
-    
-    # env = os.en4viron.copy()
-    # requested_platform = platform_override or spec.config.get("platform")
-    # if requested_platform != "CPU" and assigned_gpu is not None:
-    #     env["CUDA_VISIBLE_DEVICES"] = str(assigned_gpu)
-    #     print(
-    #         f"[{spec.sysname}] Worker pinned to CUDA_VISIBLE_DEVICES={env["CUDA_VISIBLE_DEVICES"]} "
-    #         f"(launcher-assigned GPU {assigned_gpu})"
-    #     )
+
+    requested_platform = platform_override or spec.config.get("platform")
+    if requested_platform == "CUDA" and assigned_gpu is not None:
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(assigned_gpu)
+        print(
+            f"[{spec.sysname}] Worker pinned to CUDA_VISIBLE_DEVICES={os.environ['CUDA_VISIBLE_DEVICES']} "
+            f"(launcher-assigned GPU {assigned_gpu})"
+        )
 
     worker = ReplicaWorker(spec, platform_override=platform_override,assigned_gpu=assigned_gpu)
     worker.start()
