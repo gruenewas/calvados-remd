@@ -145,6 +145,19 @@ def numpy_to_quantity(array, target_unit):
     return np.asarray(array, dtype=np.float64) * target_unit
 
 
+def parse_gpu_ids(raw_value):
+    if raw_value is None:
+        return None
+    ids = [token.strip() for token in str(raw_value).split(",") if token.strip()]
+    return ids or None
+
+
+def assign_worker_cuda_device(worker_idx, gpu_ids):
+    if not gpu_ids:
+        return None
+    return gpu_ids[worker_idx % len(gpu_ids)]
+
+
 class PersistentReplica:
     """
     One persistent CALVADOS/OpenMM runner owned by one worker process.
@@ -397,7 +410,7 @@ class ReplicaWorker:
         raise ValueError(f"Unknown worker command: {command}")
 
 
-def replica_worker_main(conn, spec: ReplicaSpec, platform_override=None):
+def replica_worker_main(conn, spec: ReplicaSpec, platform_override=None, assigned_cuda_device=None):
     log_path = spec.path / "run.log"
     log_handle = open(log_path, "a", buffering=1)
     sys.stdout = log_handle
@@ -407,6 +420,19 @@ def replica_worker_main(conn, spec: ReplicaSpec, platform_override=None):
         sys.stderr.reconfigure(line_buffering=True)
     except AttributeError:
         pass
+
+    requested_platform = platform_override or spec.config.get("platform")
+    if requested_platform is not None and str(requested_platform).upper() == "CUDA" and assigned_cuda_device is not None:
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(assigned_cuda_device)
+        print(
+            f"[{spec.sysname}] Worker CUDA pinning: assigned_cuda_device={assigned_cuda_device}, "
+            f"CUDA_VISIBLE_DEVICES={os.environ['CUDA_VISIBLE_DEVICES']}"
+        )
+    else:
+        print(
+            f"[{spec.sysname}] Worker startup: platform={requested_platform}, "
+            f"assigned_cuda_device={assigned_cuda_device}, CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES')}"
+        )
 
     worker = ReplicaWorker(spec, platform_override=platform_override)
     worker.start()
@@ -449,19 +475,25 @@ class WorkerHandle:
 
 
 class ParallelPersistentREMDController:
-    def __init__(self, replicas, platform_override=None):
+    def __init__(self, replicas, platform_override=None, gpu_ids=None):
         self.replicas = list(replicas)
+        self.gpu_ids = gpu_ids
         self.workers = []
+        worker_map = []
         for idx, spec in enumerate(self.replicas):
             parent_conn, child_conn = mp.Pipe()
+            assigned_cuda_device = assign_worker_cuda_device(idx, self.gpu_ids)
+            worker_map.append(f"{idx}:{spec.sysname}->{assigned_cuda_device if assigned_cuda_device is not None else 'None'}")
             process = mp.Process(
                 target=replica_worker_main,
-                args=(child_conn, spec, platform_override),
+                args=(child_conn, spec, platform_override, assigned_cuda_device),
                 daemon=True,
             )
             process.start()
             child_conn.close()
             self.workers.append(WorkerHandle(idx, spec, process, parent_conn))
+
+        print("Worker to CUDA device map:", ", ".join(worker_map) if worker_map else "<empty>")
 
     def run_segments(self, nsteps):
         t0 = time.time()
@@ -574,6 +606,7 @@ def run_remd(
     sysname="hpl-dimer",
     path=".",
     platform=None,
+    gpu_ids=None,
     log_csv="remd_log.csv",
     time_per_script=18,
 ):
@@ -592,7 +625,7 @@ def run_remd(
         f"Starting parallel persistent in-process REMD controller for {len(replicas)} states "
         f"({n_segments} segments total)"
     )
-    controller = ParallelPersistentREMDController(replicas, platform_override=platform)
+    controller = ParallelPersistentREMDController(replicas, platform_override=platform, gpu_ids=gpu_ids)
 
     try:
         start_time = time.time()
@@ -658,6 +691,11 @@ if __name__ == "__main__":
         default=None,
         help="Optional override for the OpenMM platform used by all persistent replica simulations",
     )
+    parser.add_argument(
+        "--gpu_ids",
+        default=None,
+        help="Optional comma-separated CUDA device IDs for round-robin worker pinning (for example: 0,1,2,3)",
+    )
     parser.add_argument("--log_csv", default="remd_log.csv", help="Exchange log CSV filename")
     parser.add_argument(
         "--time_per_script",
@@ -676,6 +714,7 @@ if __name__ == "__main__":
         sysname=args.sysname,
         path=args.path,
         platform=args.platform,
+        gpu_ids=parse_gpu_ids(args.gpu_ids),
         log_csv=args.log_csv,
         time_per_script=args.time_per_script,
     )
