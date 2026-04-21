@@ -227,17 +227,10 @@ class PersistentReplica:
             )
         else:
             print(
-                f"[{self.spec.sysname}] Using {self.mysim.platform} with gpu_id={self.mysim.gpu_id} "
+                f"[{self.spec.sysname}] Using {self.mysim.platform} "
                 f"with CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES')}"
             )
-            properties = {"DeviceIndex": "0"}
-            simulation = app.simulation.Simulation(
-                pdb.topology,
-                self.mysim.system,
-                integrator,
-                platform,
-                properties,
-            )
+            simulation = app.simulation.Simulation(pdb.topology, self.mysim.system, integrator, platform)
         return simulation
 
     def _backup_old_trajectory(self):
@@ -406,7 +399,17 @@ class ReplicaWorker:
         raise ValueError(f"Unknown worker command: {command}")
 
 
-def replica_worker_main(conn, spec: ReplicaSpec, platform_override=None):
+def assign_worker_gpu(worker_idx: int, n_workers: int, total_gpus: int | None):
+    if total_gpus is None:
+        return None
+    if total_gpus <= 0:
+        raise ValueError("total_gpus must be positive")
+    if n_workers <= 0:
+        raise ValueError("n_workers must be positive")
+    return min(total_gpus - 1, (worker_idx * total_gpus) // n_workers)
+
+
+def replica_worker_main(conn, spec: ReplicaSpec, platform_override=None, assigned_gpu=None):
     log_path = spec.path / "run.log"
     log_handle = open(log_path, "a", buffering=1)
     sys.stdout = log_handle
@@ -418,12 +421,11 @@ def replica_worker_main(conn, spec: ReplicaSpec, platform_override=None):
         pass
 
     requested_platform = platform_override or spec.config.get("platform")
-    if requested_platform != "CPU":
-        gpu_id = spec.config.get("gpu_id", 0)
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+    if requested_platform != "CPU" and assigned_gpu is not None:
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(assigned_gpu)
         print(
             f"[{spec.sysname}] Worker pinned to CUDA_VISIBLE_DEVICES={os.environ['CUDA_VISIBLE_DEVICES']} "
-            f"(configured gpu_id={gpu_id})"
+            f"(launcher-assigned GPU {assigned_gpu})"
         )
 
     worker = ReplicaWorker(spec, platform_override=platform_override)
@@ -467,14 +469,16 @@ class WorkerHandle:
 
 
 class ParallelPersistentREMDController:
-    def __init__(self, replicas, platform_override=None):
+    def __init__(self, replicas, platform_override=None, total_gpus=None):
         self.replicas = list(replicas)
         self.workers = []
+        n_workers = len(self.replicas)
         for idx, spec in enumerate(self.replicas):
             parent_conn, child_conn = mp.Pipe()
+            assigned_gpu = assign_worker_gpu(idx, n_workers, total_gpus)
             process = mp.Process(
                 target=replica_worker_main,
-                args=(child_conn, spec, platform_override),
+                args=(child_conn, spec, platform_override, assigned_gpu),
                 daemon=True,
             )
             process.start()
@@ -592,6 +596,7 @@ def run_remd(
     sysname="hpl-dimer",
     path=".",
     platform=None,
+    total_gpus=None,
     log_csv="remd_log.csv",
     time_per_script=18,
 ):
@@ -610,7 +615,11 @@ def run_remd(
         f"Starting parallel persistent in-process REMD controller for {len(replicas)} states "
         f"({n_segments} segments total)"
     )
-    controller = ParallelPersistentREMDController(replicas, platform_override=platform)
+    controller = ParallelPersistentREMDController(
+        replicas,
+        platform_override=platform,
+        total_gpus=total_gpus,
+    )
 
     try:
         start_time = time.time()
@@ -676,6 +685,12 @@ if __name__ == "__main__":
         default=None,
         help="Optional override for the OpenMM platform used by all persistent replica simulations",
     )
+    parser.add_argument(
+        "--total-gpus",
+        type=int,
+        default=None,
+        help="If set for non-CPU runs, distribute workers evenly across this many GPUs via CUDA_VISIBLE_DEVICES",
+    )
     parser.add_argument("--log_csv", default="remd_log.csv", help="Exchange log CSV filename")
     parser.add_argument(
         "--time_per_script",
@@ -694,6 +709,7 @@ if __name__ == "__main__":
         sysname=args.sysname,
         path=args.path,
         platform=args.platform,
+        total_gpus=args.total_gpus,
         log_csv=args.log_csv,
         time_per_script=args.time_per_script,
     )
