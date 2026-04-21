@@ -269,6 +269,8 @@ class PersistentReplica:
                 else:
                     effective_device_index = str(self.assigned_gpu)
                 properties["DeviceIndex"] = effective_device_index
+            if os.environ.get('CUDA_VISIBLE_DEVICES') is None:
+                platform.setPropertyDefaultValue('DeviceIndex',effective_device_index)
             print(
                 f"[{self.spec.sysname}] Using {self.mysim.platform} "
                 f"with assigned_gpu={self.assigned_gpu}, "
@@ -281,7 +283,6 @@ class PersistentReplica:
                 self.mysim.system,
                 integrator,
                 platform,
-                properties,
             )
         return simulation
 
