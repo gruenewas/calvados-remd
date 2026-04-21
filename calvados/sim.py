@@ -497,7 +497,7 @@ class Sim:
                 else:
                     self.cos.addParticle([sig*unit.nanometer, lam, 1])
         # Add Debye-Huckel
-        if self.softcore and "rt" in self.sc_mode:
+        if self.softcore and "rt" in self.sc_mode and self.rt > 0:
             for q,sig in zip(comp.qs,comp.sigmas):
                 self.yu.addParticle([q,sig*unit.nanometer])
         else:   
