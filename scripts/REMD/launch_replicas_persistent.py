@@ -226,9 +226,18 @@ class PersistentReplica:
                 dict(Threads=str(self.mysim.threads)),
             )
         else:
-            if os.environ.get("CUDA_VISIBLE_DEVICES") is None:
-                platform.setPropertyDefaultValue("DeviceIndex", str(self.mysim.gpu_id))
-            simulation = app.simulation.Simulation(pdb.topology, self.mysim.system, integrator, platform)
+            properties = {"DeviceIndex": str(self.mysim.gpu_id)}
+            print(
+                f"[{self.spec.sysname}] Using {self.mysim.platform} DeviceIndex={self.mysim.gpu_id} "
+                f"with CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES')}"
+            )
+            simulation = app.simulation.Simulation(
+                pdb.topology,
+                self.mysim.system,
+                integrator,
+                platform,
+                properties,
+            )
         return simulation
 
     def _backup_old_trajectory(self):
