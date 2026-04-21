@@ -61,8 +61,8 @@ def launch_replicas(sysname="hpl-dimer", path=".", platform="CPU"):
     reps = [d for d in sorted(glob.glob(f"{path}/{sysname}_rt*")) if os.path.isdir(d)]
     for i, d in enumerate(reps):
         if platform == "CUDA":
-            gpu_id = 0
-            #gpu_id = i//2
+            #gpu_id = 0
+            gpu_id = i//2
             env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
 
         log = open(os.path.join(d, "run.log"), "a+", buffering=1)
