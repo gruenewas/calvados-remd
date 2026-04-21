@@ -376,7 +376,7 @@ class ReplicaWorker:
         self.assigned_gpu = assigned_gpu
 
     def start(self):
-        self.replica = PersistentReplica(self.spec, platform_override=self.platform_override,self.assigned_gpu)
+        self.replica = PersistentReplica(self.spec, platform_override=self.platform_override,assigned_gpu=self.assigned_gpu)
 
     def handle(self, message):
         command = message["cmd"]
@@ -432,7 +432,7 @@ def replica_worker_main(conn, spec: ReplicaSpec, platform_override=None,assigned
     #         f"(launcher-assigned GPU {assigned_gpu})"
     #     )
 
-    worker = ReplicaWorker(spec, platform_override=platform_override,assigned_gpu)
+    worker = ReplicaWorker(spec, platform_override=platform_override,assigned_gpu=assigned_gpu)
     worker.start()
     while True:
         message = conn.recv()
