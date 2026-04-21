@@ -4,16 +4,21 @@ import os
 import sys
 import time
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
+import openmm
 import pandas as pd
 import yaml
+from openmm import app, unit
+
+from calvados import sim as calvados_sim
 
 sys.stdout.reconfigure(line_buffering=True)
 
 KB = 0.008314462618  # kJ/(mol*K)
+POS_UNIT = unit.nanometer
+VEL_UNIT = unit.nanometer / unit.picosecond
 CSV_FIELDS = [
     "time",
     "segment",
@@ -40,31 +45,6 @@ CSV_FIELDS = [
     "Ui_xj",
     "Uj_xi",
 ]
-
-
-@lru_cache(maxsize=1)
-def get_openmm_modules():
-    import openmm
-    from openmm import app, unit
-
-    return openmm, app, unit
-
-
-@lru_cache(maxsize=1)
-def get_calvados_sim_module():
-    from calvados import sim as calvados_sim
-
-    return calvados_sim
-
-
-def pos_unit():
-    _, _, unit = get_openmm_modules()
-    return unit.nanometer
-
-
-def vel_unit():
-    _, _, unit = get_openmm_modules()
-    return unit.nanometer / unit.picosecond
 
 
 @dataclass(frozen=True)
@@ -165,19 +145,6 @@ def numpy_to_quantity(array, target_unit):
     return np.asarray(array, dtype=np.float64) * target_unit
 
 
-def parse_gpu_ids(raw_value):
-    if raw_value is None:
-        return None
-    ids = [token.strip() for token in str(raw_value).split(",") if token.strip()]
-    return ids or None
-
-
-def assign_worker_cuda_device(worker_idx, gpu_ids):
-    if not gpu_ids:
-        return None
-    return gpu_ids[worker_idx % len(gpu_ids)]
-
-
 class PersistentReplica:
     """
     One persistent CALVADOS/OpenMM runner owned by one worker process.
@@ -197,7 +164,6 @@ class PersistentReplica:
         if platform_override is not None:
             self.config["platform"] = platform_override
 
-        calvados_sim = get_calvados_sim_module()
         self.mysim = calvados_sim.Sim(str(self.path), self.config, self.components)
         self._load_or_build_system()
         self.simulation, self.append = self._initialize_simulation()
@@ -228,7 +194,6 @@ class PersistentReplica:
         return self.path / f"{self.mysim.sysname}.xml"
 
     def _load_or_build_system(self):
-        openmm, _, _ = get_openmm_modules()
         if self.xml_path.is_file():
             print(f"[{self.spec.sysname}] Loading existing system XML")
             try:
@@ -243,7 +208,6 @@ class PersistentReplica:
         self.mysim.build_system()
 
     def _make_openmm_simulation(self, pdb):
-        openmm, app, unit = get_openmm_modules()
         integrator = openmm.openmm.LangevinMiddleIntegrator(
             self.mysim.temp * unit.kelvin,
             self.mysim.friction_coeff / unit.picosecond,
@@ -275,7 +239,6 @@ class PersistentReplica:
             os.rename(self.dcd_path, backup)
 
     def _initialize_simulation(self):
-        _, app, _ = get_openmm_modules()
         checkpoint_exists = self.checkpoint_path.is_file() and self.mysim.restart == "checkpoint"
         append = checkpoint_exists and self.dcd_path.is_file()
 
@@ -328,7 +291,6 @@ class PersistentReplica:
         return simulation, False
 
     def _attach_reporters(self):
-        _, app, _ = get_openmm_modules()
         self.simulation.reporters.append(
             app.dcdreporter.DCDReporter(str(self.dcd_path), self.mysim.wfreq, append=self.append)
         )
@@ -346,7 +308,6 @@ class PersistentReplica:
         )
 
     def _write_checkpoint_pdb(self, simulation=None):
-        _, app, _ = get_openmm_modules()
         if simulation is None:
             simulation = self.simulation
         state = simulation.context.getState(getPositions=True, enforcePeriodicBox=True)
@@ -362,34 +323,31 @@ class PersistentReplica:
         )
 
     def state_payload(self):
-        _, _, unit = get_openmm_modules()
         state = self.get_state()
         return {
-            "positions_nm": quantity_to_numpy(state.getPositions(), pos_unit()),
-            "velocities_nm_ps": quantity_to_numpy(state.getVelocities(), vel_unit()),
-            "box_nm": quantity_to_numpy(state.getPeriodicBoxVectors(), pos_unit()),
+            "positions_nm": quantity_to_numpy(state.getPositions(), POS_UNIT),
+            "velocities_nm_ps": quantity_to_numpy(state.getVelocities(), VEL_UNIT),
+            "box_nm": quantity_to_numpy(state.getPeriodicBoxVectors(), POS_UNIT),
             "energy_kj_mol": float(state.getPotentialEnergy().value_in_unit(unit.kilojoules_per_mole)),
         }
 
     def set_state(self, positions_nm, velocities_nm_ps, box_nm):
-        positions = numpy_to_quantity(positions_nm, pos_unit())
-        velocities = numpy_to_quantity(velocities_nm_ps, vel_unit())
-        box = numpy_to_quantity(box_nm, pos_unit())
+        positions = numpy_to_quantity(positions_nm, POS_UNIT)
+        velocities = numpy_to_quantity(velocities_nm_ps, VEL_UNIT)
+        box = numpy_to_quantity(box_nm, POS_UNIT)
         a, b, c = box
         self.simulation.context.setPositions(positions)
         self.simulation.context.setPeriodicBoxVectors(a, b, c)
         self.simulation.context.setVelocities(velocities)
 
     def compute_cross_energy(self, positions_nm):
-        _, _, unit = get_openmm_modules()
         original = self.simulation.context.getState(getPositions=True).getPositions()
-        self.simulation.context.setPositions(numpy_to_quantity(positions_nm, pos_unit()))
+        self.simulation.context.setPositions(numpy_to_quantity(positions_nm, POS_UNIT))
         energy = self.simulation.context.getState(getEnergy=True).getPotentialEnergy().value_in_unit(unit.kilojoules_per_mole)
         self.simulation.context.setPositions(original)
         return float(energy)
 
     def save_runtime_state(self, write_system_pdb=False):
-        _, app, _ = get_openmm_modules()
         self.simulation.saveCheckpoint(str(self.checkpoint_path))
         state = self.simulation.context.getState(getPositions=True, enforcePeriodicBox=True)
         checkpoint_reporter = app.pdbreporter.PDBReporter(str(self.checkpoint_pdb_path), 0)
@@ -403,7 +361,6 @@ class PersistentReplica:
         self.save_runtime_state(write_system_pdb=False)
 
     def persist_system_xml(self):
-        openmm, _, _ = get_openmm_modules()
         self.xml_path.write_text(openmm.XmlSerializer.serialize(self.mysim.system))
 
 
@@ -440,7 +397,7 @@ class ReplicaWorker:
         raise ValueError(f"Unknown worker command: {command}")
 
 
-def replica_worker_main(conn, spec: ReplicaSpec, platform_override=None, assigned_cuda_device=None):
+def replica_worker_main(conn, spec: ReplicaSpec, platform_override=None):
     log_path = spec.path / "run.log"
     log_handle = open(log_path, "a", buffering=1)
     sys.stdout = log_handle
@@ -450,19 +407,6 @@ def replica_worker_main(conn, spec: ReplicaSpec, platform_override=None, assigne
         sys.stderr.reconfigure(line_buffering=True)
     except AttributeError:
         pass
-
-    requested_platform = platform_override or spec.config.get("platform")
-    if requested_platform is not None and str(requested_platform).upper() == "CUDA" and assigned_cuda_device is not None:
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(assigned_cuda_device)
-        print(
-            f"[{spec.sysname}] Worker CUDA pinning: assigned_cuda_device={assigned_cuda_device}, "
-            f"CUDA_VISIBLE_DEVICES={os.environ['CUDA_VISIBLE_DEVICES']}"
-        )
-    else:
-        print(
-            f"[{spec.sysname}] Worker startup: platform={requested_platform}, "
-            f"assigned_cuda_device={assigned_cuda_device}, CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES')}"
-        )
 
     worker = ReplicaWorker(spec, platform_override=platform_override)
     worker.start()
@@ -505,25 +449,19 @@ class WorkerHandle:
 
 
 class ParallelPersistentREMDController:
-    def __init__(self, replicas, platform_override=None, gpu_ids=None):
+    def __init__(self, replicas, platform_override=None):
         self.replicas = list(replicas)
-        self.gpu_ids = gpu_ids
         self.workers = []
-        worker_map = []
         for idx, spec in enumerate(self.replicas):
             parent_conn, child_conn = mp.Pipe()
-            assigned_cuda_device = assign_worker_cuda_device(idx, self.gpu_ids)
-            worker_map.append(f"{idx}:{spec.sysname}->{assigned_cuda_device if assigned_cuda_device is not None else 'None'}")
             process = mp.Process(
                 target=replica_worker_main,
-                args=(child_conn, spec, platform_override, assigned_cuda_device),
+                args=(child_conn, spec, platform_override),
                 daemon=True,
             )
             process.start()
             child_conn.close()
             self.workers.append(WorkerHandle(idx, spec, process, parent_conn))
-
-        print("Worker to CUDA device map:", ", ".join(worker_map) if worker_map else "<empty>")
 
     def run_segments(self, nsteps):
         t0 = time.time()
@@ -636,7 +574,6 @@ def run_remd(
     sysname="hpl-dimer",
     path=".",
     platform=None,
-    gpu_ids=None,
     log_csv="remd_log.csv",
     time_per_script=18,
 ):
@@ -655,7 +592,7 @@ def run_remd(
         f"Starting parallel persistent in-process REMD controller for {len(replicas)} states "
         f"({n_segments} segments total)"
     )
-    controller = ParallelPersistentREMDController(replicas, platform_override=platform, gpu_ids=gpu_ids)
+    controller = ParallelPersistentREMDController(replicas, platform_override=platform)
 
     try:
         start_time = time.time()
@@ -721,11 +658,6 @@ if __name__ == "__main__":
         default=None,
         help="Optional override for the OpenMM platform used by all persistent replica simulations",
     )
-    parser.add_argument(
-        "--gpu_ids",
-        default=None,
-        help="Optional comma-separated CUDA device IDs for round-robin worker pinning (for example: 0,1,2,3)",
-    )
     parser.add_argument("--log_csv", default="remd_log.csv", help="Exchange log CSV filename")
     parser.add_argument(
         "--time_per_script",
@@ -744,7 +676,6 @@ if __name__ == "__main__":
         sysname=args.sysname,
         path=args.path,
         platform=args.platform,
-        gpu_ids=parse_gpu_ids(args.gpu_ids),
         log_csv=args.log_csv,
         time_per_script=args.time_per_script,
     )
