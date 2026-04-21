@@ -1,0 +1,35 @@
+[NUP98_rt0.00sig_270.15K] Building system from CALVADOS config
+Adding charges for both termini of NUP98_WT.
+Total number of components in the system: 1
+Total number of molecules in the system: 1
+Ashbaugh-Hatch potential between particles with lambda=1 and sigma=0.68 at 2.0 nm: -0.0051627815139227455 kJ/mol
+Debye-Hückel potential between unit charges at 4.0 nm: 0.002581838743024649 kJ/mol
+Box: 
+ (30.0, 30.0, 40)
+/uni-mainz.de/homes/sgruenew/calvados-remd/calvados/build.py:230: RuntimeWarning: divide by zero encountered in divide
+  ndeviation = n / nxyz
+Component 0, Molecule 0: NUP98_WT
+412 particles in the system
+---------- Potentials ----------
+Stored AH expression:
+0.8368000000000001*select(step(r-2^(1/6)*s),4*l*((s/r)^12-(s/r)^6-shift),4*((s/r)^12-(s/r)^6-l*shift)+(1-l)); l=select(id1+id2,(id1*id2)*0.5*(l1+l2),0); shift=(s/2.0)^12-(s/2.0)^6; s=0.5*(s1+s2)
+Stored DH expression:
+q*1.5547180605056141*(exp(-1.2535633248244769*r)/r-0.0016606475531550733); q=q1*q2
+---------- FORCES ----------
+ah: 412 particles, 411 exclusions
+yu: 412 particles, 411 exclusions
+Equilibration restraints (rcent) towards box center in z direction
+rcent: 412 restraints
+[NUP98_rt0.00sig_270.15K] Running on CUDA
+[NUP98_rt0.00sig_270.15K] Bootstrapping one-time CALVADOS equilibration before switching to persistent control
+0.01 /ps 270.15 K
+Running on CUDA
+No checkpoint file restart.chk found: Starting from new system configuration
+Writing trajectory to new file /uni-mainz.de/homes/sgruenew/calvados-remd/examples/hremd_NUP98/hremd-test_NUP98/NUP98_rt0.00sig_270.15K/NUP98_rt0.00sig_270.15K.dcd
+Minimizing energy.
+Starting slab equilibration with k_eq == 0.0200 kJ/(mol*nm) for 5000 steps
+Removing external force 3
+Minimizing energy.
+STARTING SIMULATION
+  0%|          | 0/10 [00:00<?, ?it/s] 60%|██████    | 6/10 [00:01<00:00,  5.75it/s]100%|██████████| 10/10 [00:01<00:00,  5.38it/s]
+Overwritten existing xml file
