@@ -230,7 +230,14 @@ class PersistentReplica:
                 f"[{self.spec.sysname}] Using {self.mysim.platform} with gpu_id={self.mysim.gpu_id} "
                 f"with CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES')}"
             )
-            simulation = app.simulation.Simulation(pdb.topology, self.mysim.system, integrator, platform)
+            properties = {"DeviceIndex": "0"}
+            simulation = app.simulation.Simulation(
+                pdb.topology,
+                self.mysim.system,
+                integrator,
+                platform,
+                properties,
+            )
         return simulation
 
     def _backup_old_trajectory(self):
