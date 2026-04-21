@@ -226,18 +226,11 @@ class PersistentReplica:
                 dict(Threads=str(self.mysim.threads)),
             )
         else:
-            properties = {"DeviceIndex": str(self.mysim.gpu_id)}
             print(
-                f"[{self.spec.sysname}] Using {self.mysim.platform} DeviceIndex={self.mysim.gpu_id} "
+                f"[{self.spec.sysname}] Using {self.mysim.platform} with gpu_id={self.mysim.gpu_id} "
                 f"with CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES')}"
             )
-            simulation = app.simulation.Simulation(
-                pdb.topology,
-                self.mysim.system,
-                integrator,
-                platform,
-                properties,
-            )
+            simulation = app.simulation.Simulation(pdb.topology, self.mysim.system, integrator, platform)
         return simulation
 
     def _backup_old_trajectory(self):
@@ -416,6 +409,15 @@ def replica_worker_main(conn, spec: ReplicaSpec, platform_override=None):
         sys.stderr.reconfigure(line_buffering=True)
     except AttributeError:
         pass
+
+    requested_platform = platform_override or spec.config.get("platform")
+    if requested_platform != "CPU":
+        gpu_id = spec.config.get("gpu_id", 0)
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+        print(
+            f"[{spec.sysname}] Worker pinned to CUDA_VISIBLE_DEVICES={os.environ['CUDA_VISIBLE_DEVICES']} "
+            f"(configured gpu_id={gpu_id})"
+        )
 
     worker = ReplicaWorker(spec, platform_override=platform_override)
     worker.start()
