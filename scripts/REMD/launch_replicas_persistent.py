@@ -156,11 +156,12 @@ class PersistentReplica:
     - accepted state swaps
     """
 
-    def __init__(self, spec: ReplicaSpec, platform_override=None):
+    def __init__(self, spec: ReplicaSpec, platform_override=None,assigned_gpu=None):
         self.spec = spec
         self.path = spec.path
         self.config = dict(spec.config)
         self.components = spec.components
+        self.assigned_gpu = assigned_gpu
         if platform_override is not None:
             self.config["platform"] = platform_override
 
@@ -226,6 +227,7 @@ class PersistentReplica:
                 dict(Threads=str(self.mysim.threads)),
             )
         else:
+            platform.setPropertyDefaultValue("DeviceIndex", str(self.assigned_gpu))
             print(
                 f"[{self.spec.sysname}] Using {self.mysim.platform} "
                 f"with CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES')}"
@@ -367,13 +369,14 @@ class PersistentReplica:
 
 
 class ReplicaWorker:
-    def __init__(self, spec: ReplicaSpec, platform_override=None):
+    def __init__(self, spec: ReplicaSpec, platform_override=None,assigned_gpu=None):
         self.spec = spec
         self.platform_override = platform_override
         self.replica = None
+        self.assigned_gpu = assigned_gpu
 
     def start(self):
-        self.replica = PersistentReplica(self.spec, platform_override=self.platform_override)
+        self.replica = PersistentReplica(self.spec, platform_override=self.platform_override,self.assigned_gpu)
 
     def handle(self, message):
         command = message["cmd"]
@@ -409,7 +412,7 @@ def assign_worker_gpu(worker_idx: int, n_workers: int, total_gpus: int | None):
     return min(total_gpus - 1, (worker_idx * total_gpus) // n_workers)
 
 
-def replica_worker_main(conn, spec: ReplicaSpec, platform_override=None, assigned_gpu=None):
+def replica_worker_main(conn, spec: ReplicaSpec, platform_override=None,assigned_gpu=None):
     log_path = spec.path / "run.log"
     log_handle = open(log_path, "a", buffering=1)
     sys.stdout = log_handle
@@ -419,16 +422,17 @@ def replica_worker_main(conn, spec: ReplicaSpec, platform_override=None, assigne
         sys.stderr.reconfigure(line_buffering=True)
     except AttributeError:
         pass
+    
+    # env = os.environ.copy()
+    # requested_platform = platform_override or spec.config.get("platform")
+    # if requested_platform != "CPU" and assigned_gpu is not None:
+    #     env["CUDA_VISIBLE_DEVICES"] = str(assigned_gpu)
+    #     print(
+    #         f"[{spec.sysname}] Worker pinned to CUDA_VISIBLE_DEVICES={env["CUDA_VISIBLE_DEVICES"]} "
+    #         f"(launcher-assigned GPU {assigned_gpu})"
+    #     )
 
-    requested_platform = platform_override or spec.config.get("platform")
-    if requested_platform != "CPU" and assigned_gpu is not None:
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(assigned_gpu)
-        print(
-            f"[{spec.sysname}] Worker pinned to CUDA_VISIBLE_DEVICES={os.environ['CUDA_VISIBLE_DEVICES']} "
-            f"(launcher-assigned GPU {assigned_gpu})"
-        )
-
-    worker = ReplicaWorker(spec, platform_override=platform_override)
+    worker = ReplicaWorker(spec, platform_override=platform_override,assigned_gpu)
     worker.start()
     while True:
         message = conn.recv()
