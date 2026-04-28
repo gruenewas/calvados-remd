@@ -19,6 +19,8 @@ threads : 1
 runtime : 0
 restart : 'checkpoint'
 frestart : 'restart.chk'
+config_start : false
+fconfig_start : 'starting_config.pdb'
 verbose : false
 placement : 'default'
 minimize_energy : true

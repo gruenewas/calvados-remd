@@ -610,10 +610,14 @@ class Sim:
 
         fcheck_in = f'{self.path}/{self.frestart}'
         fcheck_out = f'{self.path}/restart.chk'
+        fconfig_start = f'{self.path}/{self.fconfig_start}'
         append = False
 
         if self.restart == 'pdb' and os.path.isfile(fcheck_in):
             pdb = app.pdbfile.PDBFile(fcheck_in)
+        elif self.config_start and os.path.isfile(fconfig_start):
+            pdb = app.pdbfile.PDBFile(fconfig_start)
+            print("Starting from preexisting configuration!")
         else:
             pdb = app.pdbfile.PDBFile(self.pdb_cg)
 
@@ -653,6 +657,8 @@ class Sim:
         else:
             if self.restart == 'pdb':
                 print(f'Reading in system configuration {self.frestart}')
+            elif self.restart == 'checkpoint' and self.config_start:
+                print(f'Reading in preexisting configuration {self.fconfig_start}')
             elif self.restart == 'checkpoint':
                 print(f'No checkpoint file {self.frestart} found: Starting from new system configuration')
             elif self.restart is None:
