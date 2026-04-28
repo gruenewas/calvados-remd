@@ -51,7 +51,7 @@ class HREMDReplica:
         return f"T={self.tfolder.T:.6g}|rt={rt_label}|mode={self.sc_mode}"
 
 
-def launch_replicas(sysname="hpl-dimer", path=".", platform="CPU"):
+def launch_replicas(sysname="hpl-dimer", path=".", platform="CPU",sims_per_gpu = 3):
 
     env = os.environ.copy()
     for k in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"]:
@@ -62,10 +62,17 @@ def launch_replicas(sysname="hpl-dimer", path=".", platform="CPU"):
     for i, d in enumerate(reps):
         if platform == "CUDA":
             #gpu_id = 0
-            gpu_id = i//2
+            gpu_id = i//int(sims_per_gpu)
+            #gpu_id = int(i%2 + 1)
             env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+            
 
         log = open(os.path.join(d, "run.log"), "a+", buffering=1)
+        if platform == "CUDA":
+            log.write(f"System {os.path.basename(d)} running on CUDA Device {gpu_id}\n")
+        else:
+            log.write(f"System {os.path.basename(d)} running on CPU\n")
+        log.flush()
         procs.append(subprocess.Popen(["python", "run.py"], cwd=d, stdout=log, stderr=subprocess.STDOUT, env=env))
 
     exitcodes = [p.wait() for p in procs]
@@ -135,7 +142,7 @@ def discover_hremd_replicas(sysname, path):
     return sorted(replicas, key=lambda rep: (rep.tfolder.T, rep.rt if rep.rt is not None else float("-inf"), rep.sysname))
 
 
-def run_remd(sysname="hpl-dimer", platform="CPU", log_csv="remd_log.csv", path=".", time_per_script=18):
+def run_remd(sysname="hpl-dimer", platform="CPU", log_csv="remd_log.csv", path=".", time_per_script=72,sims_per_gpu = 3):
 
     replicas = discover_hremd_replicas(sysname, path)
     if not replicas:
@@ -167,7 +174,7 @@ def run_remd(sysname="hpl-dimer", platform="CPU", log_csv="remd_log.csv", path="
         print(f"\n=== Segment {seg}/{n_segments} starting at {segment_start_time} ===")
 
         start_rep = time.time()
-        launch_replicas(sysname, path, platform)
+        launch_replicas(sysname, path, platform,sims_per_gpu)
         t_rep = time.time() - start_rep
         print(f"Simulating replicas took {t_rep:.2f} s")
 
@@ -225,12 +232,16 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--sysname", help="input system name")
     ap.add_argument("--path", help="input path name where the simulation folders are located")
-    ap.add_argument("--platform", help="input simulation platform", required=False, default="CPU")
+    ap.add_argument("--platform", help="input simulation platform", required=False, default="CUDA")
     ap.add_argument("--log_csv", help="input name of remd log file", required=False, default="remd_log.csv")
+    ap.add_argument("--max_walltime", help="input script walltime to ensure clean simulation exit",type=int)
+    ap.add_argument("--sims_per_gpu",help="Number of simulations to placed on each gpu", required=True,type=int)
     args = ap.parse_args()
     run_remd(
         sysname=args.sysname,
         platform=args.platform,
         log_csv=args.log_csv,
         path=args.path,
+        time_per_script=args.max_walltime,
+        sims_per_gpu=args.sims_per_gpu
     )
