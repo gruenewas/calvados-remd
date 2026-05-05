@@ -5,8 +5,9 @@ import pandas as pd
 from MDAnalysis.coordinates.DCD import DCDWriter
 from pathlib import Path
 import os
-import gc
+import gc,glob,re
 import warnings
+from tqdm import tqdm
 
 warnings.filterwarnings("ignore",category=DeprecationWarning)
 plt.style.use("ggplot")
@@ -19,7 +20,7 @@ def normalize(row):
         return row
     
 
-def print_acceptance_ratio(log_path):
+def print_acceptance_ratio_T(log_path):
     log2 = pd.read_csv(log_path)
     log2["r"] = log2["r"].apply(lambda x: normalize(x))
     n_reps = int(log2[["repid_i", "repid_j"]].max().max()) + 1
@@ -37,12 +38,31 @@ def print_acceptance_ratio(log_path):
         acc_rates[pair] = acc
     
     return acc_rates
+
+def print_acceptance_ratio_H(log_path):
+    
+    log = pd.read_csv(log_path)
+    acc_rates = {}
+    for pair in np.unique(log["pair"]):
+        pairlog = log[log["pair"] == pair]
+        rti = np.unique(pairlog["rti"])
+        rtj = np.unique(pairlog["rtj"])
+        print(f"Pair: {pair} (rt: {rti} - {rtj})")
+        mean_r = np.mean([min(1,i) for i in pairlog["r"]])
+        acc_rate = np.sum(pairlog["accepted"])/len(pairlog["accepted"])
+        print(f"Mean r: {mean_r:.2f}")
+        print(f"acc_rate: {acc_rate:.2f}")
+        print("")
+        acc_rates[pair] = acc_rate
+        
+    return acc_rates
+    
         
 
 
-def plot_replica_histograms(log_path):
+def plot_replica_histograms(log_path,ex_col = "T"):
 
-    log2 = pd.read_csv("remd_log.csv")
+    log2 = pd.read_csv(log_path)
 
     seg = log2["segment"].to_numpy()
     fixed = np.empty_like(seg)
@@ -72,14 +92,16 @@ def plot_replica_histograms(log_path):
     # map segment value -> index in temps_by_seg
     seg_to_idx = {s: k for k, s in enumerate(segs)}
 
+    ex_coli = ex_col + "i"
+    ex_colj = ex_col + "j"
     # --- initialise first segment (covers all replicas; even segment with all pairs) ---
     s0 = segs[0]
     mask0 = log2[log2[seg_col] == s0]
     for _, row in mask0.iterrows():
         ri = int(row["repid_i"])
         rj = int(row["repid_j"])
-        temps_by_seg[0, ri] = row["Ti"]
-        temps_by_seg[0, rj] = row["Tj"]
+        temps_by_seg[0, ri] = row[ex_coli]
+        temps_by_seg[0, rj] = row[ex_colj]
 
     # --- propagate over all segments ---
     for k in range(1, n_seg):
@@ -93,8 +115,8 @@ def plot_replica_histograms(log_path):
         for _, row in mask.iterrows():
             ri = int(row["repid_i"])
             rj = int(row["repid_j"])
-            temps_by_seg[k, ri] = row["Ti"]
-            temps_by_seg[k, rj] = row["Tj"]
+            temps_by_seg[k, ri] = row[ex_coli]
+            temps_by_seg[k, rj] = row[ex_colj]
 
     ladder = np.sort(np.unique(temps_by_seg))
     bins = np.append(ladder, ladder[-1] + 1)
@@ -108,15 +130,16 @@ def plot_replica_histograms(log_path):
         counts, _ = np.histogram(temp_series, bins=bins)
         hists[str(i)] = counts
         
-        x = np.arange(len(counts))                    # equally spaced indices
+        x = [str(i) for i in ladder]                   # equally spaced indices
         ax.bar(x, counts, width=0.8, align='center')  # uniform bar width
-        ax.set_xticks(x)
-        ax.set_xticklabels([f"{b:.2f}" for b in bins[:-1]])  # label with temps
         # --------------------
 
-        ax.set_title(f"Number of REMD steps spent at each T for replica {i}")
-        ax.set_xlabel("Temperature (K)")
-        ax.set_ylabel("Steps")
+        ax.set_title(f"Number of REMD segments spent at each {ex_col} for replica {i}")
+        if ex_col == "T":
+            ax.set_xlabel("Temperature [K]")
+        elif ex_col == "rt":
+            ax.set_xlabel(r"$r_t$")
+        ax.set_ylabel("Counts")
     
     return hists,log2
 
@@ -140,7 +163,7 @@ def plot_epot_per_temp(log_path):
 
 
 
-def stitch_traj(stitched_path , log="remd_log.csv", folder_pre = "NUP98_WT"):
+def stitch_traj(stitched_path , log="remd_log.csv", folder_pre = "NUP98_WT",ex_col="T",overwrite=False):
 
     cwd = os.getcwd()
     save_path = f"{cwd}/{stitched_path}"
@@ -178,14 +201,16 @@ def stitch_traj(stitched_path , log="remd_log.csv", folder_pre = "NUP98_WT"):
     # map segment value -> index in temps_by_seg
     seg_to_idx = {s: k for k, s in enumerate(segs)}
 
+    ex_coli = ex_col + "i"
+    ex_colj = ex_col + "j"
     # --- initialise first segment (covers all replicas; even segment with all pairs) ---
     s0 = segs[0]
     mask0 = log2[log2[seg_col] == s0]
     for _, row in mask0.iterrows():
         ri = int(row["repid_i"])
         rj = int(row["repid_j"])
-        temps_by_seg[0, ri] = row["Ti"]
-        temps_by_seg[0, rj] = row["Tj"]
+        temps_by_seg[0, ri] = row[ex_coli]
+        temps_by_seg[0, rj] = row[ex_colj]
 
     # --- propagate over all segments ---
     for k in range(1, n_seg):
@@ -199,31 +224,47 @@ def stitch_traj(stitched_path , log="remd_log.csv", folder_pre = "NUP98_WT"):
         for _, row in mask.iterrows():
             ri = int(row["repid_i"])
             rj = int(row["repid_j"])
-            temps_by_seg[k, ri] = row["Ti"]
-            temps_by_seg[k, rj] = row["Tj"]
+            temps_by_seg[k, ri] = row[ex_coli]
+            temps_by_seg[k, rj] = row[ex_colj]
 
 
     temps = np.sort(np.unique(temps_by_seg))
     ntemps = len(temps)
     us = {}
-    print("Storing Universes for each Temperature")
+    print(f"Storing Universes for each {ex_col}")
+    
+    pattern = os.path.join(".", f"{folder_pre}*")
+    folders = [p for p in sorted(glob.glob(pattern)) if os.path.isdir(p)]
     for T in temps:
-        path = f"{folder_pre}_{T:.2f}K" 
-        us[str(T)] = mda.Universe(f"{path}/equilibration_final.pdb",f"{path}/{path}.dcd")
-
+        for path in folders:
+            m_rt = re.search(r"_rt(\d+(?:\.\d+)?)sig", path)
+            if m_rt and m_rt.group(1) == f"{T:.3f}":
+                us[str(T)] = mda.Universe(f"{path}/{path}.pdb",f"{path}/{path}.dcd")
+            m = re.search(r"_(\d+(?:\.\d+)?)K$", path)
+            if m and m.group(1) == f"{T:.2f}":
+                us[str(T)] = mda.Universe(f"{path}/equilibration_final.pdb",f"{path}/{path}.dcd")
+        if str(T) not in us.keys():
+            raise FileNotFoundError(f"Could not extract rt nor T value {T} from paths {folders} !")
+    
     for replica_id in range(ntemps):
         print(f"Stitching trajectory for replica {replica_id}")
         Path(f"{save_path}/replica_{replica_id}").mkdir(parents=True, exist_ok=True)
+        dcd_out = f"{save_path}/replica_{replica_id}/replica_{replica_id}.dcd"
+        pdb_out = f"{save_path}/replica_{replica_id}/replica_{replica_id}.pdb"
+        if not overwrite:
+            if os.path.exists(dcd_out) and os.path.exists(pdb_out):
+                print(f"Found existing trajectory and topology for replica {replica_id}. Skipping...")
+                continue
         coords = []
-        for frame,T in enumerate(temps_by_seg[:,replica_id]):
+        for frame,T in tqdm(enumerate(temps_by_seg[:,replica_id]),total=len(temps_by_seg[:,replica_id])):
             u = us[str(T)]
             coords.append(u.trajectory[frame].positions.copy())
         coords = np.array(coords)
         dims = u.dimensions.copy()
         u_new = mda.Merge(u.atoms).load_new(coords, order="fac")
         u_new.atoms.dimensions = dims
-        u_new.atoms.write(f"{save_path}/replica_{replica_id}/replica_{replica_id}.pdb")
-        with DCDWriter(f"{save_path}/replica_{replica_id}/replica_{replica_id}.dcd", u_new.atoms.n_atoms) as W:
+        u_new.atoms.write(pdb_out)
+        with DCDWriter(dcd_out, u_new.atoms.n_atoms) as W:
             for ts in u_new.trajectory:
                 u_new.dimensions = dims
                 W.write(u_new.atoms)
