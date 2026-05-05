@@ -1,4 +1,4 @@
-<#!/bin/bash
+#!/bin/bash
 #SBATCH -J HREMD_test_ladder_opt   # Job name
 #SBATCH -o HREMD_test_ladder_opt%j.out # Specify stdout output file (%j expands to jobId)
 #SBATCH -p a100dl                   # Partition name
