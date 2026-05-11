@@ -3,15 +3,16 @@
 #SBATCH -o HREMD_test_ladder_nup%j.out # Specify stdout output file (%j expands to jobId)
 #SBATCH -p a100dl                   # Partition name
 #SBATCH -n 1                     # Total number of tasks
-#SBATCH -c 6                     # CPUs per task
+#SBATCH -c 8                     # CPUs per task
 #SBATCH --gres=gpu:4
-#SBATCH -t 72:00:00              # Run time (hh:mm:ss) - 0.5 hours
+#SBATCH -t 100:00:00              # Run time (hh:mm:ss) - 0.5 hours
 #SBATCH -A nhr-dyndisphase       #Specify allocation to charge against
+#SBATCH --exclude=gpu0001
 
 # Activate micromamba environment
 eval "$(micromamba shell hook --shell bash )"
 micromamba activate calvados
 
-cd $HOME/projects_nhr/Simulations/H-REMD_testing/test_exchange/hremd-test_NUP98_ladder
+cd $HOME/projects_nhr/Simulations/H-REMD_testing/test_exchange/hremd-test_NUP98_ladder_opt
 
-python $HOME/projects/calvados-remd/scripts/REMD/launch_replicas_parallel_pairs_hremd_test.py --sysname NUP98 --path "."  --platform CUDA --max_walltime 72 --sims_per_gpu 3
+python $HOME/projects/calvados-remd/scripts/REMD/launch_replicas_parallel_pairs_hremd_test.py --sysname NUP98 --path "."  --platform CUDA --max_walltime 100 --sims_per_gpu 2
