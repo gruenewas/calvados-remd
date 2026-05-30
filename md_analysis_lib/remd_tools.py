@@ -163,7 +163,7 @@ def plot_epot_per_temp(log_path):
 
 
 
-def stitch_traj(stitched_path , log="remd_log.csv", folder_pre = "NUP98_WT",ex_col="T",overwrite=False):
+def stitch_traj(stitched_path , log="remd_log.csv", folder_pre = "NUP98_WT",ex_col="T",overwrite=False,start=None,stop=None,step = 1,dt=None):
 
     cwd = os.getcwd()
     save_path = f"{cwd}/{stitched_path}"
@@ -239,7 +239,8 @@ def stitch_traj(stitched_path , log="remd_log.csv", folder_pre = "NUP98_WT",ex_c
         for path in folders:
             m_rt = re.search(r"_rt(\d+(?:\.\d+)?)sig", path)
             if m_rt and m_rt.group(1) == f"{T:.3f}":
-                us[str(T)] = mda.Universe(f"{path}/{path}.pdb",f"{path}/{path}.dcd")
+                print(path)
+                us[str(T)] = mda.Universe(f"{path}/top.pdb",f"{path}/{path}.dcd")
             m = re.search(r"_(\d+(?:\.\d+)?)K$", path)
             if m and m.group(1) == f"{T:.2f}":
                 us[str(T)] = mda.Universe(f"{path}/equilibration_final.pdb",f"{path}/{path}.dcd")
@@ -255,20 +256,43 @@ def stitch_traj(stitched_path , log="remd_log.csv", folder_pre = "NUP98_WT",ex_c
             if os.path.exists(dcd_out) and os.path.exists(pdb_out):
                 print(f"Found existing trajectory and topology for replica {replica_id}. Skipping...")
                 continue
+
+        frame_indices = np.arange(len(temps_by_seg[:, replica_id]))[start:stop:step]
+        temps_replica = temps_by_seg[:, replica_id][start:stop:step]
+
         coords = []
-        for frame,T in tqdm(enumerate(temps_by_seg[:,replica_id]),total=len(temps_by_seg[:,replica_id])):
+        times = []
+        dims_list = []
+
+        for frame_idx, T in tqdm(zip(frame_indices, temps_replica), total=len(frame_indices)):
             u = us[str(T)]
-            coords.append(u.trajectory[frame].positions.copy())
-        coords = np.array(coords)
-        dims = u.dimensions.copy()
-        u_new = mda.Merge(u.atoms).load_new(coords, order="fac")
-        u_new.atoms.dimensions = dims
+            ts = u.trajectory[frame_idx]
+
+            coords.append(ts.positions.copy())
+            times.append(ts.time)
+            dims_list.append(ts.dimensions.copy())
+        coords = np.asarray(coords)
+        times = np.asarray(times)
+        dims_list = np.asarray(dims_list)
+        if dt is None:
+            dt = np.median(np.diff(times))
+
+        u_ref = us[str(temps_replica[0])]
+        u_new = mda.Merge(u_ref.atoms).load_new(
+            coords,
+            order="fac",
+            dimensions=dims_list,
+            dt=dt,
+        )
+
         u_new.atoms.write(pdb_out)
-        with DCDWriter(dcd_out, u_new.atoms.n_atoms) as W:
-            for ts in u_new.trajectory:
+
+        with DCDWriter(dcd_out, u_new.atoms.n_atoms, dt=dt) as W:
+            for ts, dims in zip(u_new.trajectory, dims_list):
                 u_new.dimensions = dims
                 W.write(u_new.atoms)
-        del u_new, u
+
+        del u_new
         gc.collect()
 
 

@@ -11,6 +11,8 @@ from .acf import (
 )
 from . import remd_tools
 
+from. import md_tools
+
 __all__ = [
     "minimum_image_vectors",
     "compute_e2e_vectors_from_bonds",
