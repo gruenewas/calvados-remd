@@ -5,7 +5,7 @@ from tqdm import tqdm
 from scipy.signal import correlate
 from scipy.optimize import curve_fit
 
-plt.style.use("ggplot")
+plt.style.use("thesis")
 
 
 def minimum_image_vectors(dr, box):
@@ -13,17 +13,17 @@ def minimum_image_vectors(dr, box):
     return dr - box_lengths * np.round(dr / box_lengths)
 
 
-def compute_e2e_vectors_from_bonds(u, step=None):
+def compute_e2e_vectors_from_bonds(u, step=None,start=None,stop=None):
     if step is None:
         step = 1
 
-    nframes = len(u.trajectory[::step])
+    nframes = len(u.trajectory[start:stop:step])
     nchains = len(u.segments)
     R = np.zeros((nframes, nchains, 3), dtype=np.float64)
     t = np.zeros(nframes,dtype=np.float64)
 
     print("Calculating end-to-end vectors from MIC-corrected bond vectors")
-    for tidx, ts in tqdm(enumerate(u.trajectory[::step]), total=nframes):
+    for tidx, ts in tqdm(enumerate(u.trajectory[start:stop:step]), total=nframes):
         box = ts.dimensions
         t[tidx] = ts.time*1e-6
 
@@ -75,16 +75,16 @@ def autocorr_vector(x, subtract_mean=False, unbiased=True, normalize=True, metho
 
     for dim in range(3):
         c = correlate(x[:, dim], x[:, dim], mode="full", method=method)
-        c = c[c.size // 2:]
+        c = c[c.size // 2:] #keep only positve lag part of acf
 
         if corr is None:
             corr = c
         else:
             corr += c
 
-    corr = _normalize_corr(corr, nframes, unbiased=unbiased)
+    corr = _normalize_corr(corr, nframes, unbiased=unbiased) #calculate unbiased ACF
 
-    if normalize:
+    if normalize: #normalize with C(0)  
         if corr[0] != 0:
             corr = corr / corr[0]
         else:
