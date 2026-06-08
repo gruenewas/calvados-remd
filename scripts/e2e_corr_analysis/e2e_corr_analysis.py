@@ -274,7 +274,7 @@ def run_one_method(R, t, sysname, lbl, comp_dict, out_dir, method):
 #     }
 
 
-def run_one(folder, comp_dict, compare=False,top_name = None, traj_name = None,overwrite=False,step=None):
+def run_one(folder, comp_dict, compare=False,top_name = None, traj_name = None,overwrite=False,step=None,start=None,stop=None):
     _set_single_thread_env()
 
     folder = os.path.normpath(folder)
@@ -302,7 +302,7 @@ def run_one(folder, comp_dict, compare=False,top_name = None, traj_name = None,o
         try:
             import MDAnalysis as mda
             u = mda.Universe(top_file, traj_file)
-            R,time = compute_e2e_vectors_from_bonds(u, step=step)
+            R,time = compute_e2e_vectors_from_bonds(u, step=step,start=start,stop=stop)
             np.save(ree_file, R)
             np.save(t_file, time)
         except Exception as e:
@@ -444,7 +444,10 @@ if __name__ == "__main__":
     parser.add_argument('--traj_name', required=False, default=None,help = 'Specify name of trajectory file (e.g. traj.dcd). If not specified the default [foldername].dcd is used')
     parser.add_argument('--overwrite',required=False, default=False)
     parser.add_argument("--step", required=False,default=None,type=int)
+    parser.add_argument('--start',required=False,default=None,type=int)
     args = parser.parse_args()
+
+    print(args.comp_dict)
 
     comps = json.loads(args.comp_dict)
     comp_dict = {}
@@ -479,6 +482,7 @@ if __name__ == "__main__":
     pattern = os.path.join(".", f"{args.wildcard}")
     folders = [p for p in sorted(glob.glob(pattern)) if os.path.isdir(p)]
 
+    
     if not folders:
         raise RuntimeError(f"No folders found for pattern: {pattern}")
 
@@ -534,7 +538,7 @@ if __name__ == "__main__":
 
     with ProcessPoolExecutor(max_workers=max_workers) as ex:
         futures = {
-            ex.submit(run_one, folder, comp_dict, args.compare, args.top_name, args.traj_name,args.overwrite,args.step): folder
+            ex.submit(run_one, folder, comp_dict, args.compare, args.top_name, args.traj_name,args.overwrite,args.step,args.start): folder
             for folder in valid_folders
         }
 

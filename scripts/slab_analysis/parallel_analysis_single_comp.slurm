@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH -J parallel_analysis
-#SBATCH -o parallel_analysis_%j.out
+#SBATCH -o ana_logs/old_logs/parallel_analysis_%j.out
 #SBATCH -p smallcpu
 #SBATCH --mem=60G
 #SBATCH -n 1               # single batch step
-#SBATCH -c 1               # number of CPUs you want to use (>= number of tasks below
-#SBATCH -t 03:00:00
+#SBATCH -c 1              # number of CPUs you want to use (>= number of tasks below
+#SBATCH -t 04:00:00
 #SBATCH -A nhr-dyndisphase
 
 set -euo pipefail
@@ -35,15 +35,28 @@ mapfile -t CPUS < <(expand_cpulist "$cpulist_raw")
 mkdir -p ana_logs
 # Launch tasks in parallel, one per CPU
 for p in "${prots[@]}"; do
-  cd /home/sgruenew/projects_nhr/Simulations/H-REMD_testing/test_exchange/hremd-test_NUP98_ladder_opt/
-  #dirs=(*K)
+  #cd /home/sgruenew/projects_nhr/Simulations/H-REMD_testing/test_exchange/hremd-test_NUP98_highT_ladder/
+  #cd /home/sgruenew/projects_nhr/Simulations/singleNUP98/phase_diagram_lowT
+  #cd /home/sgruenew/projects_nhr/Simulations/T-REMD_testing/NUP98/tremd_NUP98_highT_largestep/
+  #cd ~/projects_nhr/Simulations/singleNUP98/cdil-test_NUP98_300K/
+  #dirs=(NUP98*)
+  #cd ~/projects_nhr/Simulations/singleNUP98/phase_diagram_lowT/
+  #dirs=(*284.14K)
+   
+   #cd ~/projects_nhr/Simulations/T-REMD_testing/NUP98/tremd_NUP98_284K-300K_largestep/
+   #dirs=(*K)
+
+  cd /home/sgruenew/projects_nhr/Simulations/H-REMD_testing/test_exchange/hremd-test_NUP98_highT_ladder/
+  #cd ~/projects_nhr/Simulations/H-REMD_testing/test_exchange/hremd-test_NUP98_300K/
   dirs=(*rt0.000*)
+  
   #dirs=(NUP98_WT_302.29K NUP98_WT_299.50K NUP98_WT_296.78K NUP98_WT_294.13K NUP98_WT_281.95K NUP98_WT_277.59K)
   for i in "${!dirs[@]}"; do
     sysname="${dirs[$i]}"
     CPU="${CPUS[$i]}"
     ts="$(date +%Y-%m-%d_%H-%M-%S)"
     mkdir -p /home/sgruenew/projects/calvados-remd/scripts/slab_analysis/ana_logs
+    #mkdir -p data_half_traj
     log="/home/sgruenew/projects/calvados-remd/scripts/slab_analysis/ana_logs/${sysname}_${ts}.out"
     (
     taskset -c "$CPU" bash -lc "

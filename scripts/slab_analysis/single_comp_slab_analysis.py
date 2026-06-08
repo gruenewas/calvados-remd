@@ -29,17 +29,36 @@ if __name__ == "__main__":
     slab = cal.analysis.SlabAnalysis(
         name = name,
         input_path = folder,
-        input_pdb = f"{sysname}.pdb",
+        input_pdb = f"top.pdb",
+        #input_dcd = f"{sysname}_first0.5mus.dcd",
         input_dcd = f"{sysname}.dcd",
-        output_path = folder + '/data',
+        #input_dcd = "combined.dcd",
+        output_path = folder + '/data_first3.76mus',
+        centered_dcd = "traj.dcd", 
+        ref_name = ref_name, ref_chains = chaindict[ref_name],
+        client_chain_list = client_chain_list, client_names = client_names,
+        verbose = True)
+
+    slab.center(end=7520,step=10, center_target='all')
+    slab.calc_profiles()
+    slab.calc_concentrations()
+    slab.plot_density_profiles()
+
+    
+    slab_halftraj = cal.analysis.SlabAnalysis(
+        name = name,
+        input_path = folder,
+        input_pdb = f"top.pdb",
+        #input_dcd = f"{sysname}_first0.5mus.dcd",
+        input_dcd = f"{sysname}.dcd",
+        #input_dcd = "combined.dcd",
+        output_path = folder + '/data_after0.5_first3.76mus',
         centered_dcd = "traj.dcd",
         ref_name = ref_name, ref_chains = chaindict[ref_name],
         client_chain_list = client_chain_list, client_names = client_names,
         verbose = True)
 
-    slab.center(start=0, step=1,end = 4386, center_target='all')
-    slab.calc_profiles(start=75)
-    slab.calc_concentrations()
-    slab.plot_density_profiles()
+    slab_halftraj.calc_profiles(start = 100)
+    slab_halftraj.calc_concentrations()
+    slab_halftraj.plot_density_profiles()
 
-    
