@@ -566,7 +566,7 @@ class Sim:
 
     def map_custom_restraints(self):
         """ Map input format for custom restraints to absolute bead number """
-        custom_restr = self.parse_custom_restraints(self.fcustom_restraints)
+        custom_restr = self.parse_custom_restraints(f"{self.path}/{self.fcustom_restraints}")
         total_beads = [0]
         for idx, comp in enumerate(self.components):
             comp.start_bead = total_beads[-1]

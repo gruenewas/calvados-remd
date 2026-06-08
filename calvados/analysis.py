@@ -486,8 +486,6 @@ class SlabAnalysis:
         """
 
         u = mda.Universe(f'{self.input_path}/{self.input_pdb}', f'{self.input_path}/{self.input_dcd}', in_memory=True)
-        if start == None:
-            start = int(len(u.trajectory)//3)
         n_frames = len(u.trajectory[start:end:step])
         if center_target == 'ref':
             if self.ref_chains is None:

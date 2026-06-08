@@ -304,8 +304,8 @@ def init_ah_interactions_rt2(eps, rc, fixed_lambda, rt):
 
     energy_expression = f"select(step(r-({rmin_expr})), ({outer_expr}), ({inner_expr}))"
 
-    print("AH-RT2 ENERGY EXPRESSION:")
-    print(energy_expression)
+    # print("AH-RT2 ENERGY EXPRESSION:") #optional debugging prints
+    # print(energy_expression)
 
     ah = openmm.CustomNonbondedForce(energy_expression)
     ah.addPerParticleParameter("s")
@@ -341,10 +341,10 @@ def init_yu_interactions_rt2(eps, k, rc, rt):
         f"(-{k}/({rt_eff_expr}) - 1/(({rt_eff_expr})^2))"
     )
 
-    # U_sc = A + B*r^2
-    B_expr = f"(({ddh_rt_expr})/(2*({rt_eff_expr})))"
-    A_expr = f"({dh_rt_expr}) - ({B_expr})*({rt_eff_expr})^2"
-    sc_dh_expr = f"({A_expr}) + ({B_expr})*r^2"
+    # U_sc = A - B*r^2
+    B_expr = f"((-{ddh_rt_expr})/(2*({rt_eff_expr})))"
+    A_expr = f"({dh_rt_expr}) + ({B_expr})*({rt_eff_expr})^2"
+    sc_dh_expr = f"({A_expr}) - ({B_expr})*r^2"
 
     energy_expression = (
         f"select(step(r-({rt_eff_expr})),"
@@ -352,8 +352,8 @@ def init_yu_interactions_rt2(eps, k, rc, rt):
         f"       ({sc_dh_expr}))"
     )
 
-    print("YU-RT2 ENERGY EXPRESSION:")
-    print(energy_expression)
+    #print("YU-RT2 ENERGY EXPRESSION:") #optional debugging prints
+    #print(energy_expression)
 
     yu = openmm.CustomNonbondedForce(energy_expression)
     yu.addPerParticleParameter("q")
