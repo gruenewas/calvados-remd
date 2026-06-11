@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH -J parallel_analysis
-#SBATCH -o ana_logs/old_logs/parallel_analysis_%j.out
+#SBATCH -o ana_logs/parallel_analysis_%j.out
 #SBATCH -p smallcpu
-#SBATCH --mem=60G
+#SBATCH --mem=120G
 #SBATCH -n 1               # single batch step
-#SBATCH -c 1              # number of CPUs you want to use (>= number of tasks below
+#SBATCH -c 12             # number of CPUs you want to use (>= number of tasks below
 #SBATCH -t 04:00:00
 #SBATCH -A nhr-dyndisphase
 
@@ -36,19 +36,19 @@ mkdir -p ana_logs
 # Launch tasks in parallel, one per CPU
 for p in "${prots[@]}"; do
   #cd /home/sgruenew/projects_nhr/Simulations/H-REMD_testing/test_exchange/hremd-test_NUP98_highT_ladder/
-  #cd /home/sgruenew/projects_nhr/Simulations/singleNUP98/phase_diagram_lowT
+  #cd /home/sgruenew/projects_nhr/Simulations/singleNUP98/phase_diagram/WT/
   #cd /home/sgruenew/projects_nhr/Simulations/T-REMD_testing/NUP98/tremd_NUP98_highT_largestep/
   #cd ~/projects_nhr/Simulations/singleNUP98/cdil-test_NUP98_300K/
-  #dirs=(NUP98*)
+  #dirs=(*7.00mus_0)
   #cd ~/projects_nhr/Simulations/singleNUP98/phase_diagram_lowT/
   #dirs=(*284.14K)
    
-   #cd ~/projects_nhr/Simulations/T-REMD_testing/NUP98/tremd_NUP98_284K-300K_largestep/
-   #dirs=(*K)
+   cd ~/projects_nhr/Simulations/T-REMD_testing/NUP98/tremd_NUP98_284K-300K_largestep/
+   dirs=(*K)
 
-  cd /home/sgruenew/projects_nhr/Simulations/H-REMD_testing/test_exchange/hremd-test_NUP98_highT_ladder/
+  #cd /home/sgruenew/projects_nhr/Simulations/H-REMD_testing/test_exchange/hremd-test_NUP98_highT_ladder/
   #cd ~/projects_nhr/Simulations/H-REMD_testing/test_exchange/hremd-test_NUP98_300K/
-  dirs=(*rt0.000*)
+  #dirs=(*rt0.000*)
   
   #dirs=(NUP98_WT_302.29K NUP98_WT_299.50K NUP98_WT_296.78K NUP98_WT_294.13K NUP98_WT_281.95K NUP98_WT_277.59K)
   for i in "${!dirs[@]}"; do

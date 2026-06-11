@@ -33,32 +33,33 @@ if __name__ == "__main__":
         #input_dcd = f"{sysname}_first0.5mus.dcd",
         input_dcd = f"{sysname}.dcd",
         #input_dcd = "combined.dcd",
-        output_path = folder + '/data_first3.76mus',
-        centered_dcd = "traj.dcd", 
+        output_path = folder + '/data_after0.5mus_long',
+        centered_dcd = f'traj.dcd', 
         ref_name = ref_name, ref_chains = chaindict[ref_name],
         client_chain_list = client_chain_list, client_names = client_names,
         verbose = True)
 
-    slab.center(end=7520,step=10, center_target='all')
+    slab.center(start=1000,step=5, center_target='all')
+    #print(slab.centered_dcd)
     slab.calc_profiles()
     slab.calc_concentrations()
     slab.plot_density_profiles()
 
     
-    slab_halftraj = cal.analysis.SlabAnalysis(
-        name = name,
-        input_path = folder,
-        input_pdb = f"top.pdb",
-        #input_dcd = f"{sysname}_first0.5mus.dcd",
-        input_dcd = f"{sysname}.dcd",
-        #input_dcd = "combined.dcd",
-        output_path = folder + '/data_after0.5_first3.76mus',
-        centered_dcd = "traj.dcd",
-        ref_name = ref_name, ref_chains = chaindict[ref_name],
-        client_chain_list = client_chain_list, client_names = client_names,
-        verbose = True)
+    # slab_halftraj = cal.analysis.SlabAnalysis(
+    #     name = name,
+    #     input_path = folder,
+    #     input_pdb = f"top.pdb",
+    #     #input_dcd = f"{sysname}_first0.5mus.dcd",
+    #     input_dcd = f"{sysname}.dcd",
+    #     #input_dcd = "combined.dcd",
+    #     output_path = folder + '/data_after0.5_first3.76mus',
+    #     centered_dcd = "traj.dcd",
+    #     ref_name = ref_name, ref_chains = chaindict[ref_name],
+    #     client_chain_list = client_chain_list, client_names = client_names,
+    #     verbose = True)
 
-    slab_halftraj.calc_profiles(start = 100)
-    slab_halftraj.calc_concentrations()
-    slab_halftraj.plot_density_profiles()
+    # slab_halftraj.calc_profiles(start = 100)
+    # slab_halftraj.calc_concentrations()
+    # slab_halftraj.plot_density_profiles()
 
