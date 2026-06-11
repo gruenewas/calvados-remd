@@ -471,7 +471,7 @@ def analyze_interparticle_distances(
     return result
 
 
-def average_rg(folder, sysname, residues_csv, comp_dict, residue_key_col=None, start=None,stop=None,step=None,dcd=None):
+def average_rg(folder, sysname, residues_csv, comp_dict, residue_key_col=None, start=None,stop=None,step=None,dcd=None,top=None):
     """
     Calculate the average radius of gyration for a trajectory after assigning
     coarse-grained bead masses from residue molecular weights.
@@ -484,7 +484,8 @@ def average_rg(folder, sysname, residues_csv, comp_dict, residue_key_col=None, s
     """
 
     folder = Path(folder)
-    top = folder / "top.pdb"
+    if top is None:
+        top = folder / "top.pdb"
     if dcd is None:
         traj = folder / f"{sysname}.dcd"
     else:
