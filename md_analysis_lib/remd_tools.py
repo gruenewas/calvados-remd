@@ -58,9 +58,264 @@ def print_acceptance_ratio_H(log_path):
     return acc_rates
     
         
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
 
 
-def plot_replica_histograms(log_path,ex_col = "T"):
+def _fix_restarted_segments(seg):
+    """Make segment numbers monotonic across appended/restarted logs."""
+    seg = np.asarray(seg, dtype=int)
+    fixed = np.empty_like(seg)
+
+    offset = 0
+    fixed[0] = seg[0]
+
+    for i in range(1, len(seg)):
+        if seg[i] < seg[i - 1]:
+            # More general than offset += seg[i-1] + 1
+            offset = fixed[i - 1] + 1 - seg[i]
+
+        fixed[i] = seg[i] + offset
+
+    return fixed
+
+
+def _as_bool(x):
+    if isinstance(x, str):
+        return x.strip().lower() in {"true", "1", "yes", "y"}
+    return bool(x)
+
+
+def _get_ij_cols(df, ex_col):
+    """
+    Supports both Ti/Tj, rti/rtj and state_i/state_j, mode_i/mode_j style names.
+    """
+    candidates = [
+        (f"{ex_col}i", f"{ex_col}j"),       # T -> Ti/Tj, rt -> rti/rtj
+        (f"{ex_col}_i", f"{ex_col}_j"),     # state -> state_i/state_j
+    ]
+
+    for ci, cj in candidates:
+        if ci in df.columns and cj in df.columns:
+            return ci, cj
+
+    raise ValueError(
+        f"Could not find i/j columns for ex_col={ex_col!r}. "
+        f"Tried: {candidates}"
+    )
+
+
+def plot_replica_histograms(
+    log_path,
+    ex_col="T",
+    repids_are="pre_exchange",
+    assume_initial_identity=True,
+    validate=True,
+):
+    """
+    Plot occupancy histograms for each replica.
+
+    Parameters
+    ----------
+    log_path : str or Path
+        REMD log CSV.
+
+    ex_col : str
+        Quantity to histogram. Examples:
+        - "T"     -> uses Ti/Tj
+        - "rt"    -> uses rti/rtj
+        - "state" -> uses state_i/state_j
+
+    repids_are : {"pre_exchange", "post_exchange"}
+        Use "pre_exchange" if repid_i/j describe the replicas before the accepted
+        swap is applied. This is usually the safest interpretation for exchange logs.
+
+        Use "post_exchange" only if repid_i/j were written after the accepted
+        swap was already applied.
+
+    assume_initial_identity : bool
+        If the first segment does not contain all replicas, assume missing replica r
+        initially occupied state r. This is useful for odd/even neighbor schedules
+        where endpoint states can be unpaired.
+
+    validate : bool
+        In pre_exchange mode, check whether the logged replica-state mapping matches
+        the reconstructed mapping before applying exchanges.
+    """
+
+    log2 = pd.read_csv(log_path)
+
+    required = {"segment", "repid_i", "repid_j"}
+    missing = required - set(log2.columns)
+    if missing:
+        raise ValueError(f"Missing required columns: {missing}")
+
+    ex_coli, ex_colj = _get_ij_cols(log2, ex_col)
+
+    log2["segment_fixed"] = _fix_restarted_segments(log2["segment"].to_numpy())
+    seg_col = "segment_fixed"
+
+    segs = np.sort(log2[seg_col].unique())
+    n_seg = len(segs)
+
+    n_reps = int(log2[["repid_i", "repid_j"]].max().max()) + 1
+
+    if repids_are == "post_exchange":
+        # Similar to your original method, but using NaN and categorical counts.
+        occ = np.full((n_seg, n_reps), np.nan, dtype=object)
+
+        for k, s in enumerate(segs):
+            if k > 0:
+                occ[k] = occ[k - 1]
+
+            rows = log2[log2[seg_col] == s]
+
+            for _, row in rows.iterrows():
+                ri = int(row["repid_i"])
+                rj = int(row["repid_j"])
+
+                occ[k, ri] = row[ex_coli]
+                occ[k, rj] = row[ex_colj]
+
+    elif repids_are == "pre_exchange":
+        required = {"state_i", "state_j", "accepted"}
+        missing = required - set(log2.columns)
+        if missing:
+            raise ValueError(
+                f"pre_exchange reconstruction needs these columns: {missing}"
+            )
+
+        # Map state index -> exchange coordinate, e.g. state 0 -> 270.15 K.
+        state_value = {}
+
+        for _, row in log2.iterrows():
+            state_value[int(row["state_i"])] = row[ex_coli]
+            state_value[int(row["state_j"])] = row[ex_colj]
+
+        n_states = int(log2[["state_i", "state_j"]].max().max()) + 1
+
+        # Initial replica -> state mapping from the first segment.
+        rep_state = np.full(n_reps, -1, dtype=int)
+        rows0 = log2[log2[seg_col] == segs[0]]
+
+        for _, row in rows0.iterrows():
+            rep_state[int(row["repid_i"])] = int(row["state_i"])
+            rep_state[int(row["repid_j"])] = int(row["state_j"])
+
+        missing_reps = np.where(rep_state < 0)[0]
+
+        if len(missing_reps) > 0:
+            if not assume_initial_identity:
+                raise ValueError(
+                    "Initial segment does not contain all replicas. "
+                    f"Missing replicas: {missing_reps}"
+                )
+
+            used_states = set(rep_state[rep_state >= 0])
+
+            for r in missing_reps:
+                if r < n_states and r not in used_states:
+                    rep_state[r] = r
+                    used_states.add(r)
+                else:
+                    raise ValueError(
+                        "Could not infer initial state for missing replica "
+                        f"{r}. Provide a complete first segment or disable "
+                        "assume_initial_identity."
+                    )
+
+        occ = np.full((n_seg, n_reps), np.nan, dtype=object)
+
+        for k, s in enumerate(segs):
+            rows = log2[log2[seg_col] == s]
+
+            # Occupancy during this segment, before applying this segment's swaps.
+            for r in range(n_reps):
+                occ[k, r] = state_value[rep_state[r]]
+
+            if validate:
+                for _, row in rows.iterrows():
+                    ri = int(row["repid_i"])
+                    rj = int(row["repid_j"])
+                    si = int(row["state_i"])
+                    sj = int(row["state_j"])
+
+                    if rep_state[ri] != si or rep_state[rj] != sj:
+                        raise ValueError(
+                            "Logged mapping does not match reconstructed mapping. "
+                            "This usually means repid_i/j are logged after exchange, "
+                            "not before. Try repids_are='post_exchange'.\n"
+                            f"At segment {s}: "
+                            f"replica {ri} reconstructed state {rep_state[ri]}, "
+                            f"log state {si}; "
+                            f"replica {rj} reconstructed state {rep_state[rj]}, "
+                            f"log state {sj}."
+                        )
+
+            # Apply accepted swaps to get the state mapping for the next segment.
+            for _, row in rows.iterrows():
+                if _as_bool(row["accepted"]):
+                    ri = int(row["repid_i"])
+                    rj = int(row["repid_j"])
+
+                    rep_state[ri], rep_state[rj] = rep_state[rj], rep_state[ri]
+
+    else:
+        raise ValueError("repids_are must be 'pre_exchange' or 'post_exchange'.")
+
+    # Use categorical counting instead of np.histogram.
+    # This avoids bin-edge issues for non-integer T or rt values.
+    all_values = pd.Series(occ.reshape(-1)).dropna()
+
+    try:
+        ladder = np.array(sorted(all_values.unique(), key=float), dtype=object)
+    except Exception:
+        ladder = np.array(sorted(all_values.unique(), key=str), dtype=object)
+
+    hists = {}
+
+    for r in range(n_reps):
+        fig, ax = plt.subplots(figsize=(10, 10))
+
+        values = pd.Series(occ[:, r]).dropna()
+        counts = values.value_counts().reindex(ladder, fill_value=0)
+
+        hists[str(r)] = counts.to_numpy()
+
+        x = [f"{v:g}" if isinstance(v, (int, float, np.integer, np.floating)) else str(v)
+             for v in ladder]
+
+        ax.bar(x, counts.to_numpy(), width=0.8, align="center")
+
+        ax.set_title(
+            f"Number of REMD segments spent at each {ex_col} for replica {r}"
+        )
+
+        if ex_col == "T":
+            ax.set_xlabel("Temperature [K]")
+        elif ex_col == "rt":
+            ax.set_xlabel(r"$r_t$")
+        else:
+            ax.set_xlabel(ex_col)
+
+        ax.set_ylabel("Counts")
+        ax.tick_params(axis="x", rotation=90)
+
+        fig.tight_layout()
+
+    occ_df = pd.DataFrame(
+        occ,
+        index=segs,
+        columns=[f"replica_{r}" for r in range(n_reps)],
+    )
+    occ_df.index.name = seg_col
+
+    return hists, log2, occ_df
+
+
+
+#def plot_replica_histograms(log_path,ex_col = "T"):
 
     log2 = pd.read_csv(log_path)
 
