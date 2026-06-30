@@ -5,7 +5,7 @@
 #SBATCH -n 1                     # Total number of tasks
 #SBATCH -c 12                     # CPUs per task
 #SBATCH --gres=gpu:4
-#SBATCH -t 36:00:00              # Run time (hh:mm:ss) - 0.5 hours
+#SBATCH -t 48:00:00              # Run time (hh:mm:ss) - 0.5 hours
 #SBATCH -A nhr-dyndisphase      #Specify allocation to charge against
 #SBATCH --exclude=gpu0001
 
@@ -22,5 +22,5 @@ cd ~/projects_nhr/Simulations/T-REMD_testing/NUP98/tremd_NUP98_298-315_largestep
 #cd ~/projects_nhr/Simulations/T-REMD_testing/NUP98/tremd_NUP98_284K-300K_largestep/
 #cd ~/projects_nhr/Simulations/T-REMD_testing/NUP98/tremd_NUP98_294-308_largestep/
 
-python $HOME/projects/calvados-remd/scripts/REMD/launch_replicas_persistent.py --sysname NUP98 --path "." --platform CUDA --total-gpus 4 --time_per_script 36
+python $HOME/projects/calvados-remd/scripts/REMD/launch_replicas_persistent.py --sysname NUP98 --path "." --platform CUDA --total-gpus 4 --time_per_script 47
 #python $HOME/projects/calvados-remd/scripts/REMD/launch_replicas_persistent.py --sysname hpl2+lin13 --path "." --platform CUDA --total-gpus 4 --time_per_script 144
