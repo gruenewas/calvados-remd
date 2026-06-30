@@ -1,0 +1,4 @@
+pHpl-dimer 1 154 | pHpl-dimer 1 329 | 0.623 700.0
+pHpl-dimer 1 158 | pHpl-dimer 1 333 | 0.637 700.0
+pHpl-dimer 1 167 | pHpl-dimer 1 300 | 0.735 700.0
+pHpl-dimer 1 125 | pHpl-dimer 1 342 | 0.737 700.0

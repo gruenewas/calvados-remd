@@ -1,0 +1,32 @@
+# 1-based residue numbers, inclusive
+# only the folded parts you actually want to restrain
+
+Hpl-2:
+  - [16, 72]          
+  - [111, 175]   
+
+Lin-13:
+  - [[305,314], [325,465], [527,564]]
+  - [1588, 1823]     # Zn-finger cluster
+
+MET-2:
+  - [142, 307]
+  - [441, 638]
+  - [804,909]
+  - [[945,1055], [1071,1116], [1206,1275]]
+
+Lin-65:
+- [300,394]                  # Coiled-coil domain
+- [[558,657], [668,727]]     # C-terminal folded domain (split by a linker)
+
+hpl-dimer:
+  - [16, 72]          # chromodomain, chain A
+  - [111, 175]       # chromoshadow, chain A
+  - [191, 247]
+  - [286, 350]
+
+pHpl-dimer:
+  - [16, 72]          # chromodomain, chain A
+  - [111, 175]       # chromoshadow, chain A
+  - [191, 247]
+  - [286, 350]
