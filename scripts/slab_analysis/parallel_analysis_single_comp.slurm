@@ -2,9 +2,9 @@
 #SBATCH -J parallel_analysis
 #SBATCH -o ana_logs/parallel_analysis_%j.out
 #SBATCH -p smallcpu
-#SBATCH --mem=120G
+#SBATCH --mem=80G
 #SBATCH -n 1               # single batch step
-#SBATCH -c 12             # number of CPUs you want to use (>= number of tasks below
+#SBATCH -c 12            # number of CPUs you want to use (>= number of tasks below
 #SBATCH -t 04:00:00
 #SBATCH -A nhr-dyndisphase
 
@@ -39,12 +39,17 @@ for p in "${prots[@]}"; do
   #cd /home/sgruenew/projects_nhr/Simulations/singleNUP98/phase_diagram/WT/
   #cd /home/sgruenew/projects_nhr/Simulations/T-REMD_testing/NUP98/tremd_NUP98_highT_largestep/
   #cd ~/projects_nhr/Simulations/singleNUP98/cdil-test_NUP98_300K/
+  #dirs=(NUP98*)
   #dirs=(*7.00mus_0)
   #cd ~/projects_nhr/Simulations/singleNUP98/phase_diagram_lowT/
   #dirs=(*284.14K)
    
-   cd ~/projects_nhr/Simulations/T-REMD_testing/NUP98/tremd_NUP98_284K-300K_largestep/
-   dirs=(*K)
+  #cd ~/projects_nhr/Simulations/T-REMD_testing/NUP98/tremd_NUP98_284K-300K_largestep/
+  #cd ~/projects_nhr/Simulations/T-REMD_testing/NUP98/tremd_NUP98_294-308_largestep
+  
+  cd /home/sgruenew/projects_nhr/Simulations/T-REMD_testing/NUP98/phase_diagram_lowT_nhr
+  #cd ~/projects_nhr/Simulations/singleNUP98/phase_diagram_lowT
+  dirs=(*K)
 
   #cd /home/sgruenew/projects_nhr/Simulations/H-REMD_testing/test_exchange/hremd-test_NUP98_highT_ladder/
   #cd ~/projects_nhr/Simulations/H-REMD_testing/test_exchange/hremd-test_NUP98_300K/
@@ -62,7 +67,7 @@ for p in "${prots[@]}"; do
     taskset -c "$CPU" bash -lc "
       echo \"\$(date +%T) start $sysname on \$(hostname) (CPU $CPU)\"
        #python ../csat_vs_t.py --name "NUP98" --path "." --sysname "$sysname" --ref_name "NUP98"
-       python /home/sgruenew/projects/calvados-remd/scripts/slab_analysis/single_comp_slab_analysis.py --name NUP98 --sysname $sysname --path . --ref_name "NUP98"
+       python /home/sgruenew/projects/calvados-remd/scripts/slab_analysis/single_comp_slab_analysis.py --name NUP98 --sysname $sysname --path . --ref_name "NUP98" --start 0
        echo \"\$(date +%T) done $sysname (CPU $CPU)\"
     ") >>"$log" 2>&1 &
   done
